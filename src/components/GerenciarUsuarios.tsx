@@ -17,12 +17,11 @@ export function GerenciarUsuarios() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [formData, setFormData] = useState({
     nome: '',
-    email: '',
     password: '',
     role: 'funcionario' as 'gerente' | 'funcionario'
   });
   const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
+  const { signUpWithName } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -52,7 +51,7 @@ export function GerenciarUsuarios() {
     setLoading(true);
 
     try {
-      await signUp(formData.email, formData.password, formData.nome, formData.role);
+      await signUpWithName(formData.nome, formData.password, formData.role);
       
       toast({
         title: "Sucesso",
@@ -62,7 +61,6 @@ export function GerenciarUsuarios() {
       // Limpar formulário
       setFormData({
         nome: '',
-        email: '',
         password: '',
         role: 'funcionario'
       });
@@ -128,17 +126,6 @@ export function GerenciarUsuarios() {
                   id="nome"
                   value={formData.nome}
                   onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   required
                 />
               </div>
