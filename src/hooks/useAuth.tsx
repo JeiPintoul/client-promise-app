@@ -10,8 +10,8 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, nome: string, role?: 'gerente' | 'funcionario') => Promise<void>;
+  signInWithName: (nome: string, password: string) => Promise<void>;
+  signUpWithName: (nome: string, password: string, role?: 'gerente' | 'funcionario') => Promise<void>;
   signOut: () => Promise<void>;
   isManager: boolean;
 }
@@ -65,15 +65,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signInWithName = async (nome: string, password: string) => {
+    // Primeiro, buscar o usuário pelo nome para obter o email gerado
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('nome', nome)
+      .single();
+
+    if (profileError || !profileData) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    // Gerar email baseado no nome (mesmo padrão usado no signup)
+    const email = `${nome.toLowerCase().replace(/\s+/g, '.')}@sistema.local`;
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) throw error;
+    
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        throw new Error('Nome de usuário ou senha incorretos');
+      }
+      throw error;
+    }
   };
 
-  const signUp = async (email: string, password: string, nome: string, role: 'gerente' | 'funcionario' = 'funcionario') => {
+  const signUpWithName = async (nome: string, password: string, role: 'gerente' | 'funcionario' = 'funcionario') => {
+    // Verificar se já existe um usuário com esse nome
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('nome', nome)
+      .single();
+
+    if (existingProfile) {
+      throw new Error('Já existe um usuário com esse nome');
+    }
+
+    // Gerar um email único baseado no nome
+    const email = `${nome.toLowerCase().replace(/\s+/g, '.')}@sistema.local`;
+    
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -84,7 +118,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
-    if (error) throw error;
+    
+    if (error) {
+      if (error.message.includes('User already registered')) {
+        throw new Error('Este usuário já está cadastrado');
+      }
+      throw error;
+    }
   };
 
   const signOut = async () => {
@@ -99,8 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       profile,
       loading,
-      signIn,
-      signUp,
+      signInWithName,
+      signUpWithName,
       signOut,
       isManager
     }}>

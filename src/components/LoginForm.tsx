@@ -10,13 +10,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [nome, setNome] = useState('');
+  const [password, setPassword] = useState('');
+  const [nomeNovoUsuario, setNomeNovoUsuario] = useState('');
+  const [senhaNovoUsuario, setSenhaNovoUsuario] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [users, setUsers] = useState<Array<{ nome: string; email: string }>>([]);
-  const { signIn, signUp, loading } = useAuth();
+  const [users, setUsers] = useState<Array<{ nome: string; id: string }>>([]);
+  const { signInWithName, signUpWithName, loading } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -31,13 +32,7 @@ export function LoginForm() {
       
       if (error) throw error;
       
-      // Para demo, vamos criar emails fictícios baseados nos nomes
-      const usersWithEmails = data.map(user => ({
-        nome: user.nome,
-        email: `${user.nome.toLowerCase().replace(/\s+/g, '.')}@sistema.com`
-      }));
-      
-      setUsers(usersWithEmails);
+      setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
     }
@@ -47,15 +42,17 @@ export function LoginForm() {
     e.preventDefault();
     try {
       if (isSignUp) {
-        await signUp(email, password, nome, 'funcionario');
+        await signUpWithName(nomeNovoUsuario, senhaNovoUsuario, 'funcionario');
         toast({
           title: "Sucesso",
           description: "Usuário criado com sucesso!",
         });
         setIsSignUp(false);
         fetchUsers();
+        setNomeNovoUsuario('');
+        setSenhaNovoUsuario('');
       } else {
-        await signIn(email, password);
+        await signInWithName(nome, password);
         toast({
           title: "Sucesso",
           description: "Login realizado com sucesso!",
@@ -71,11 +68,8 @@ export function LoginForm() {
   };
 
   const handleUserSelect = (userName: string) => {
-    const user = users.find(u => u.nome === userName);
-    if (user) {
-      setSelectedUser(userName);
-      setEmail(user.email);
-    }
+    setSelectedUser(userName);
+    setNome(userName);
   };
 
   return (
@@ -97,7 +91,7 @@ export function LoginForm() {
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((user) => (
-                      <SelectItem key={user.email} value={user.nome}>
+                      <SelectItem key={user.id} value={user.nome}>
                         {user.nome}
                       </SelectItem>
                     ))}
@@ -106,38 +100,41 @@ export function LoginForm() {
               </div>
             )}
 
-            {isSignUp && (
+            {isSignUp ? (
               <div className="space-y-2">
-                <Label htmlFor="nome">Nome</Label>
+                <Label htmlFor="nome-novo">Nome do Usuário</Label>
+                <Input
+                  id="nome-novo"
+                  type="text"
+                  value={nomeNovoUsuario}
+                  onChange={(e) => setNomeNovoUsuario(e.target.value)}
+                  placeholder="Digite o nome do usuário"
+                  required
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="nome">Nome do Usuário</Label>
                 <Input
                   id="nome"
                   type="text"
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
+                  placeholder="Digite seu nome"
                   required
+                  disabled={selectedUser !== ''}
                 />
               </div>
             )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={!isSignUp && selectedUser !== ''}
-              />
-            </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <Input
                 id="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={isSignUp ? senhaNovoUsuario : password}
+                onChange={(e) => isSignUp ? setSenhaNovoUsuario(e.target.value) : setPassword(e.target.value)}
+                placeholder="Digite sua senha"
                 required
               />
             </div>
@@ -150,7 +147,14 @@ export function LoginForm() {
               <Button
                 type="button"
                 variant="link"
-                onClick={() => setIsSignUp(!isSignUp)}
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setNome('');
+                  setPassword('');
+                  setNomeNovoUsuario('');
+                  setSenhaNovoUsuario('');
+                  setSelectedUser('');
+                }}
                 className="text-sm"
               >
                 {isSignUp ? 'Voltar ao Login' : 'Primeiro acesso? Criar conta'}
