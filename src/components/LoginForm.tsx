@@ -43,27 +43,7 @@ export function LoginForm() {
     
     try {
       if (isSignUp) {
-        // Criar novo usuário usando localStorage temporariamente
-        const userId = crypto.randomUUID();
-        const userData = {
-          id: userId,
-          nome: nomeNovoUsuario,
-          password: senhaNovoUsuario,
-          role: 'funcionario'
-        };
-        
-        localStorage.setItem(`user_${nomeNovoUsuario}`, JSON.stringify(userData));
-        
-        // Adicionar à tabela profiles
-        const { error } = await supabase
-          .from('profiles')
-          .insert([{
-            id: userId,
-            nome: nomeNovoUsuario,
-            role: 'funcionario'
-          }]);
-          
-        if (error) throw error;
+        await signUpWithName(nomeNovoUsuario, senhaNovoUsuario, 'funcionario');
         
         toast({
           title: "Sucesso",
@@ -75,38 +55,12 @@ export function LoginForm() {
         setNomeNovoUsuario('');
         setSenhaNovoUsuario('');
       } else {
-        // Login usando localStorage
-        const savedUser = localStorage.getItem(`user_${nome}`);
+        await signInWithName(nome, password);
         
-        if (!savedUser) {
-          throw new Error('Usuário não encontrado');
-        }
-        
-        const userData = JSON.parse(savedUser);
-        
-        if (userData.password !== password) {
-          throw new Error('Senha incorreta');
-        }
-        
-        // Buscar perfil no banco
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('nome', nome)
-          .single();
-          
-        if (error || !profile) {
-          throw new Error('Perfil não encontrado');
-        }
-        
-        // Simular login bem-sucedido
         toast({
           title: "Sucesso",
           description: "Login realizado com sucesso!",
         });
-        
-        // Redirecionar ou atualizar estado conforme necessário
-        window.location.reload();
       }
     } catch (error: any) {
       toast({

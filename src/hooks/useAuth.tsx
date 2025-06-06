@@ -1,13 +1,12 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/types/database';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface AuthContextType {
-  user: User | null;
+  user: any | null;
   profile: Profile | null;
   loading: boolean;
   signInWithName: (nome: string, password: string) => Promise<void>;
@@ -19,33 +18,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // Check for existing logged-in user in localStorage
+    const currentUser = localStorage.getItem('current_user');
+    if (currentUser) {
+      const userData = JSON.parse(currentUser);
+      setUser(userData);
+      fetchProfile(userData.id);
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const fetchProfile = async (userId: string) => {
@@ -66,27 +52,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithName = async (nome: string, password: string) => {
-    // Primeiro, buscar o usuário pelo nome para obter o ID
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('nome', nome)
-      .single();
-
-    if (profileError || !profileData) {
+    // Verificar credenciais no localStorage
+    const savedUser = localStorage.getItem(`user_${nome}`);
+    
+    if (!savedUser) {
       throw new Error('Usuário não encontrado');
     }
-
-    // Fazer login direto pelo ID do usuário usando a função admin
-    const { data, error } = await supabase.auth.admin.getUserById(profileData.id);
     
-    if (error || !data.user) {
-      throw new Error('Erro ao autenticar usuário');
+    const userData = JSON.parse(savedUser);
+    
+    if (userData.password !== password) {
+      throw new Error('Senha incorreta');
     }
-
+    
+    // Buscar perfil no banco
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('nome', nome)
+      .single();
+      
+    if (error || !profile) {
+      throw new Error('Perfil não encontrado');
+    }
+    
     // Simular login bem-sucedido
-    setUser(data.user);
-    await fetchProfile(data.user.id);
+    const userSession = {
+      id: profile.id,
+      nome: profile.nome,
+      role: profile.role
+    };
+    
+    setUser(userSession);
+    setProfile(profile);
+    localStorage.setItem('current_user', JSON.stringify(userSession));
   };
 
   const signUpWithName = async (nome: string, password: string, role: 'gerente' | 'funcionario' = 'funcionario') => {
@@ -98,6 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .single();
 
     if (existingProfile) {
+      throw new Error('Já existe um usuário com esse nome');
+    }
+
+    // Verificar se já existe no localStorage
+    const existingUser = localStorage.getItem(`user_${nome}`);
+    if (existingUser) {
       throw new Error('Já existe um usuário com esse nome');
     }
 
@@ -118,8 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error;
     }
 
-    // Criar entrada de autenticação customizada (simulada)
-    // Em um ambiente real, você salvaria a senha hasheada
+    // Salvar credenciais no localStorage
     localStorage.setItem(`user_${nome}`, JSON.stringify({ 
       id: userId, 
       nome, 
@@ -131,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     setUser(null);
     setProfile(null);
+    localStorage.removeItem('current_user');
   };
 
   const isManager = profile?.role === 'gerente';
