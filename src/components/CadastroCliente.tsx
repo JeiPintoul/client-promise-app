@@ -1,6 +1,5 @@
 
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,17 +31,24 @@ export function CadastroCliente() {
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('clientes')
-        .insert({
-          nome: formData.nome,
-          apelido: formData.apelido || null,
-          telefone: formData.telefone,
-          cpf: formData.cpf,
-          endereco: formData.endereco
-        });
+      // Criar cliente localmente
+      const clienteId = crypto.randomUUID();
+      const novoCliente = {
+        id: clienteId,
+        nome: formData.nome,
+        apelido: formData.apelido || null,
+        telefone: formData.telefone,
+        cpf: formData.cpf,
+        endereco: formData.endereco,
+        elegibilidade: 'elegivel',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-      if (error) throw error;
+      // Salvar no localStorage
+      const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
+      clientes.push(novoCliente);
+      localStorage.setItem('clientes', JSON.stringify(clientes));
 
       toast({
         title: "Sucesso",
