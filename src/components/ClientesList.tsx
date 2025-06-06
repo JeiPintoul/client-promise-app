@@ -1,7 +1,5 @@
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { Database } from '@/types/database';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +7,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Search, Plus, Edit, Eye } from 'lucide-react';
+import { Search, Eye } from 'lucide-react';
 import { ClienteDetail } from './ClienteDetail';
 
-type Cliente = Database['public']['Tables']['clientes']['Row'];
+type Cliente = {
+  id: string;
+  nome: string;
+  apelido?: string | null;
+  telefone: string;
+  cpf: string;
+  endereco: string;
+  elegibilidade: 'elegivel' | 'nao_elegivel';
+  created_at: string;
+  updated_at: string;
+};
 
 export function ClientesList() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -32,15 +40,10 @@ export function ClientesList() {
     filterClientes();
   }, [clientes, searchTerm, statusFilter]);
 
-  const fetchClientes = async () => {
+  const fetchClientes = () => {
     try {
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .order('nome');
-
-      if (error) throw error;
-      setClientes(data || []);
+      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
+      setClientes(clientesData);
     } catch (error: any) {
       toast({
         title: "Erro",
@@ -74,7 +77,7 @@ export function ClientesList() {
     setFilteredClientes(filtered);
   };
 
-  const toggleElegibilidade = async (cliente: Cliente) => {
+  const toggleElegibilidade = (cliente: Cliente) => {
     if (!isManager) {
       toast({
         title: "Acesso Negado",
@@ -87,20 +90,15 @@ export function ClientesList() {
     try {
       const novaElegibilidade = cliente.elegibilidade === 'elegivel' ? 'nao_elegivel' : 'elegivel';
       
-      const { error } = await supabase
-        .from('clientes')
-        .update({ elegibilidade: novaElegibilidade })
-        .eq('id', cliente.id);
-
-      if (error) throw error;
-
-      setClientes(prev =>
-        prev.map(c =>
-          c.id === cliente.id
-            ? { ...c, elegibilidade: novaElegibilidade }
-            : c
-        )
+      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
+      const clientesAtualizados = clientesData.map((c: Cliente) =>
+        c.id === cliente.id
+          ? { ...c, elegibilidade: novaElegibilidade, updated_at: new Date().toISOString() }
+          : c
       );
+      
+      localStorage.setItem('clientes', JSON.stringify(clientesAtualizados));
+      setClientes(clientesAtualizados);
 
       toast({
         title: "Sucesso",

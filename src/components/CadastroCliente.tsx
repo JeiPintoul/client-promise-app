@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { validarCPF, validarTelefone, formatarCPF, formatarTelefone } from '@/utils/validations';
 
 export function CadastroCliente() {
   const [formData, setFormData] = useState({
@@ -20,14 +21,85 @@ export function CadastroCliente() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    
+    let processedValue = value;
+    
+    // Formatação automática para CPF e telefone
+    if (name === 'cpf') {
+      processedValue = formatarCPF(value);
+    } else if (name === 'telefone') {
+      processedValue = formatarTelefone(value);
+    }
+    
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: processedValue
     }));
+  };
+
+  const validarFormulario = (): boolean => {
+    if (!formData.nome.trim()) {
+      toast({
+        title: "Erro de Validação",
+        description: "Nome é obrigatório.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!validarCPF(formData.cpf)) {
+      toast({
+        title: "Erro de Validação",
+        description: "CPF inválido. Verifique o número digitado.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!validarTelefone(formData.telefone)) {
+      toast({
+        title: "Erro de Validação",
+        description: "Telefone inválido. Deve conter 10 ou 11 dígitos.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!formData.endereco.trim()) {
+      toast({
+        title: "Erro de Validação",
+        description: "Endereço é obrigatório.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Verificar se CPF já está cadastrado
+    const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
+    const cpfLimpo = formData.cpf.replace(/[^\d]/g, '');
+    const cpfExistente = clientes.find((cliente: any) => 
+      cliente.cpf.replace(/[^\d]/g, '') === cpfLimpo
+    );
+
+    if (cpfExistente) {
+      toast({
+        title: "Erro de Validação",
+        description: "Já existe um cliente cadastrado com este CPF.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validarFormulario()) {
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -35,11 +107,11 @@ export function CadastroCliente() {
       const clienteId = crypto.randomUUID();
       const novoCliente = {
         id: clienteId,
-        nome: formData.nome,
-        apelido: formData.apelido || null,
+        nome: formData.nome.trim(),
+        apelido: formData.apelido.trim() || null,
         telefone: formData.telefone,
         cpf: formData.cpf,
-        endereco: formData.endereco,
+        endereco: formData.endereco.trim(),
         elegibilidade: 'elegivel',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -108,6 +180,7 @@ export function CadastroCliente() {
                 name="telefone"
                 value={formData.telefone}
                 onChange={handleInputChange}
+                placeholder="(11) 99999-9999"
                 required
               />
             </div>
@@ -119,6 +192,7 @@ export function CadastroCliente() {
                 name="cpf"
                 value={formData.cpf}
                 onChange={handleInputChange}
+                placeholder="000.000.000-00"
                 required
               />
             </div>

@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClientesList } from './ClientesList';
 import { CadastroCliente } from './CadastroCliente';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
-import { LogOut, Users, UserPlus, CreditCard } from 'lucide-react';
+import { Configuracoes } from './Configuracoes';
+import { LogOut, Users, UserPlus, CreditCard, Settings } from 'lucide-react';
 
 export function Dashboard() {
   const { user, profile, signOut, isManager } = useAuth();
@@ -22,13 +23,13 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-background">
+      <header className="bg-card shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Sistema de Gestão</h1>
-              <p className="text-sm text-gray-600">
+              <h1 className="text-2xl font-bold text-foreground">Sistema de Gestão</h1>
+              <p className="text-sm text-muted-foreground">
                 Bem-vindo, {profile?.nome} ({profile?.role})
               </p>
             </div>
@@ -42,7 +43,7 @@ export function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className={`grid w-full ${isManager ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="clientes" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Clientes
@@ -50,6 +51,10 @@ export function Dashboard() {
             <TabsTrigger value="cadastro" className="flex items-center gap-2">
               <UserPlus className="w-4 h-4" />
               Cadastrar Cliente
+            </TabsTrigger>
+            <TabsTrigger value="configuracoes" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Configurações
             </TabsTrigger>
             {isManager && (
               <TabsTrigger value="usuarios" className="flex items-center gap-2">
@@ -77,6 +82,17 @@ export function Dashboard() {
               </CardHeader>
               <CardContent>
                 <CadastroCliente />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="configuracoes" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurações do Sistema</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Configuracoes />
               </CardContent>
             </Card>
           </TabsContent>
