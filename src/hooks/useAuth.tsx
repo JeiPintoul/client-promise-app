@@ -1,13 +1,15 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { Database } from '@/types/database';
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
+interface User {
+  id: string;
+  nome: string;
+  role: 'gerente' | 'funcionario';
+}
 
 interface AuthContextType {
-  user: any | null;
-  profile: Profile | null;
+  user: User | null;
+  profile: User | null;
   loading: boolean;
   signInWithName: (nome: string, password: string) => Promise<void>;
   signUpWithName: (nome: string, password: string, role?: 'gerente' | 'funcionario') => Promise<void>;
@@ -18,8 +20,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,28 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (currentUser) {
       const userData = JSON.parse(currentUser);
       setUser(userData);
-      fetchProfile(userData.id);
-    } else {
-      setLoading(false);
+      setProfile(userData);
     }
+    setLoading(false);
   }, []);
-
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      setProfile(data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const signInWithName = async (nome: string, password: string) => {
     // Verificar credenciais no localStorage
@@ -65,71 +49,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Senha incorreta');
     }
     
-    // Buscar perfil no banco
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('nome', nome)
-      .single();
-      
-    if (error || !profile) {
-      throw new Error('Perfil não encontrado');
-    }
-    
-    // Simular login bem-sucedido
+    // Login bem-sucedido
     const userSession = {
-      id: profile.id,
-      nome: profile.nome,
-      role: profile.role
+      id: userData.id,
+      nome: userData.nome,
+      role: userData.role
     };
     
     setUser(userSession);
-    setProfile(profile);
+    setProfile(userSession);
     localStorage.setItem('current_user', JSON.stringify(userSession));
   };
 
   const signUpWithName = async (nome: string, password: string, role: 'gerente' | 'funcionario' = 'funcionario') => {
     // Verificar se já existe um usuário com esse nome
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('nome', nome)
-      .single();
-
-    if (existingProfile) {
-      throw new Error('Já existe um usuário com esse nome');
-    }
-
-    // Verificar se já existe no localStorage
     const existingUser = localStorage.getItem(`user_${nome}`);
     if (existingUser) {
       throw new Error('Já existe um usuário com esse nome');
     }
 
-    // Criar usuário diretamente na tabela profiles
+    // Criar usuário localmente
     const userId = crypto.randomUUID();
-    
-    const { error } = await supabase
-      .from('profiles')
-      .insert([
-        {
-          id: userId,
-          nome,
-          role
-        }
-      ]);
-    
-    if (error) {
-      throw error;
-    }
+    const newUser = {
+      id: userId,
+      nome,
+      password,
+      role
+    };
 
-    // Salvar credenciais no localStorage
-    localStorage.setItem(`user_${nome}`, JSON.stringify({ 
-      id: userId, 
-      nome, 
-      password, 
-      role 
-    }));
+    // Salvar no localStorage
+    localStorage.setItem(`user_${nome}`, JSON.stringify(newUser));
+    
+    // Também salvar na lista de usuários para o dropdown
+    const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
+    allUsers.push({ id: userId, nome, role });
+    localStorage.setItem('all_users', JSON.stringify(allUsers));
   };
 
   const signOut = async () => {

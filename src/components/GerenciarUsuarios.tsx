@@ -1,6 +1,5 @@
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,12 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Database } from '@/types/database';
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
+interface LocalUser {
+  id: string;
+  nome: string;
+  role: 'gerente' | 'funcionario';
+}
 
 export function GerenciarUsuarios() {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<LocalUser[]>([]);
   const [formData, setFormData] = useState({
     nome: '',
     password: '',
@@ -28,15 +30,10 @@ export function GerenciarUsuarios() {
     fetchProfiles();
   }, []);
 
-  const fetchProfiles = async () => {
+  const fetchProfiles = () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('nome');
-
-      if (error) throw error;
-      setProfiles(data || []);
+      const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
+      setProfiles(allUsers);
     } catch (error: any) {
       toast({
         title: "Erro",
@@ -79,22 +76,24 @@ export function GerenciarUsuarios() {
     }
   };
 
-  const updateRole = async (userId: string, newRole: 'gerente' | 'funcionario') => {
+  const updateRole = (userId: string, newRole: 'gerente' | 'funcionario') => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setProfiles(prev =>
-        prev.map(profile =>
-          profile.id === userId
-            ? { ...profile, role: newRole }
-            : profile
-        )
+      const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
+      const updatedUsers = allUsers.map((user: LocalUser) =>
+        user.id === userId ? { ...user, role: newRole } : user
       );
+      
+      localStorage.setItem('all_users', JSON.stringify(updatedUsers));
+      
+      // Atualizar também nos dados do usuário individual
+      const userToUpdate = updatedUsers.find((user: LocalUser) => user.id === userId);
+      if (userToUpdate) {
+        const userData = JSON.parse(localStorage.getItem(`user_${userToUpdate.nome}`) || '{}');
+        userData.role = newRole;
+        localStorage.setItem(`user_${userToUpdate.nome}`, JSON.stringify(userData));
+      }
+
+      setProfiles(updatedUsers);
 
       toast({
         title: "Sucesso",
