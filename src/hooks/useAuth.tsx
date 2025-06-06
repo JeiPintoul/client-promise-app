@@ -68,21 +68,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Já existe um usuário com esse nome');
     }
 
+    // Se for o primeiro usuário, torná-lo gerente automaticamente
+    const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
+    const finalRole = allUsers.length === 0 ? 'gerente' : role;
+
     // Criar usuário localmente
     const userId = crypto.randomUUID();
     const newUser = {
       id: userId,
       nome,
       password,
-      role
+      role: finalRole
     };
 
     // Salvar no localStorage
     localStorage.setItem(`user_${nome}`, JSON.stringify(newUser));
     
     // Também salvar na lista de usuários para o dropdown
-    const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
-    allUsers.push({ id: userId, nome, role });
+    allUsers.push({ id: userId, nome, role: finalRole });
     localStorage.setItem('all_users', JSON.stringify(allUsers));
   };
 

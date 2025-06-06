@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,10 +10,33 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, DollarSign } from 'lucide-react';
-import { Database } from '@/types/database';
 
-type Cliente = Database['public']['Tables']['clientes']['Row'];
-type Promissoria = Database['public']['Tables']['promissorias']['Row'];
+type Cliente = {
+  id: string;
+  nome: string;
+  apelido?: string | null;
+  telefone: string;
+  cpf: string;
+  endereco: string;
+  elegibilidade: 'elegivel' | 'nao_elegivel';
+  created_at: string;
+  updated_at: string;
+};
+
+type Promissoria = {
+  id: string;
+  cliente_id: string;
+  valor: number;
+  parcelado: boolean;
+  numero_parcelas: number | null;
+  data_emissao: string;
+  data_limite: string;
+  data_pagamento?: string | null;
+  status: 'em_aberto' | 'pago' | 'atrasado';
+  dias_atraso: number;
+  created_by: string;
+  created_at: string;
+};
 
 interface ClienteDetailProps {
   cliente: Cliente;
@@ -24,31 +47,78 @@ interface ClienteDetailProps {
 export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps) {
   const [promissorias, setPromissorias] = useState<Promissoria[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    valor: '',
-    parcelado: false,
-    numero_parcelas: '',
-    data_emissao: '',
-    data_limite: ''
-  });
   const [loading, setLoading] = useState(false);
   const { user, isManager } = useAuth();
+  const { settings } = useSettings();
   const { toast } = useToast();
+
+  // Calcular datas padrão
+  const hoje = new Date().toISOString().split('T')[0];
+  const dataLimitePadrao = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const [formData, setFormData] = useState({
+    valor: '',
+    parcelado: settings.parcelamento.ativo,
+    numero_parcelas: settings.parcelamento.numeroPadrao.toString(),
+    data_emissao: hoje,
+    data_limite: dataLimitePadrao
+  });
 
   useEffect(() => {
     fetchPromissorias();
   }, [cliente.id]);
 
-  const fetchPromissorias = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('promissorias')
-        .select('*')
-        .eq('cliente_id', cliente.id)
-        .order('data_emissao', { ascending: false });
+  useEffect(() => {
+    // Atualizar parcelamento quando configurações mudarem
+    if (!settings.parcelamento.bloqueado || isManager) {
+      setFormData(prev => ({
+        ...prev,
+        parcelado: settings.parcelamento.ativo,
+        numero_parcelas: settings.parcelamento.numeroPadrao.toString()
+      }));
+    }
+  }, [settings.parcelamento, isManager]);
 
-      if (error) throw error;
-      setPromissorias(data || []);
+  useEffect(() => {
+    // Atualizar data limite quando data de emissão mudar
+    if (formData.data_emissao) {
+      const dataEmissao = new Date(formData.data_emissao);
+      const novaDataLimite = new Date(dataEmissao.getTime() + 30 * 24 * 60 * 60 * 1000);
+      setFormData(prev => ({
+        ...prev,
+        data_limite: novaDataLimite.toISOString().split('T')[0]
+      }));
+    }
+  }, [formData.data_emissao]);
+
+  const fetchPromissorias = () => {
+    try {
+      const promissoriasData = JSON.parse(localStorage.getItem('promissorias') || '[]');
+      const promissoriasCliente = promissoriasData
+        .filter((p: Promissoria) => p.cliente_id === cliente.id)
+        .map((p: Promissoria) => {
+          // Calcular status e dias de atraso
+          const hoje = new Date();
+          const dataLimite = new Date(p.data_limite);
+          let status = p.status;
+          let diasAtraso = 0;
+
+          if (p.data_pagamento) {
+            status = 'pago';
+          } else if (hoje > dataLimite) {
+            status = 'atrasado';
+            diasAtraso = Math.floor((hoje.getTime() - dataLimite.getTime()) / (1000 * 60 * 60 * 24));
+          } else {
+            status = 'em_aberto';
+          }
+
+          return { ...p, status, dias_atraso: diasAtraso };
+        })
+        .sort((a: Promissoria, b: Promissoria) => 
+          new Date(b.data_emissao).getTime() - new Date(a.data_emissao).getTime()
+        );
+
+      setPromissorias(promissoriasCliente);
     } catch (error: any) {
       toast({
         title: "Erro",
@@ -70,34 +140,52 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
       return;
     }
 
+    // Validar datas
+    if (formData.data_limite < formData.data_emissao) {
+      toast({
+        title: "Erro de Validação",
+        description: "A data limite não pode ser anterior à data de emissão.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('promissorias')
-        .insert({
-          cliente_id: cliente.id,
-          valor: parseFloat(formData.valor),
-          parcelado: formData.parcelado,
-          numero_parcelas: formData.parcelado ? parseInt(formData.numero_parcelas) : null,
-          data_emissao: formData.data_emissao,
-          data_limite: formData.data_limite,
-          created_by: user!.id
-        });
+      const novaPromissoria: Promissoria = {
+        id: crypto.randomUUID(),
+        cliente_id: cliente.id,
+        valor: parseFloat(formData.valor),
+        parcelado: formData.parcelado,
+        numero_parcelas: formData.parcelado ? parseInt(formData.numero_parcelas) : null,
+        data_emissao: formData.data_emissao,
+        data_limite: formData.data_limite,
+        status: 'em_aberto',
+        dias_atraso: 0,
+        created_by: user!.id,
+        created_at: new Date().toISOString()
+      };
 
-      if (error) throw error;
+      const promissoriasData = JSON.parse(localStorage.getItem('promissorias') || '[]');
+      promissoriasData.push(novaPromissoria);
+      localStorage.setItem('promissorias', JSON.stringify(promissoriasData));
 
       toast({
         title: "Sucesso",
         description: "Promissória criada com sucesso!",
       });
 
+      // Reset form
+      const novoHoje = new Date().toISOString().split('T')[0];
+      const novaDataLimite = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
       setFormData({
         valor: '',
-        parcelado: false,
-        numero_parcelas: '',
-        data_emissao: '',
-        data_limite: ''
+        parcelado: settings.parcelamento.ativo,
+        numero_parcelas: settings.parcelamento.numeroPadrao.toString(),
+        data_emissao: novoHoje,
+        data_limite: novaDataLimite
       });
       setShowForm(false);
       fetchPromissorias();
@@ -114,19 +202,18 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
     }
   };
 
-  const marcarComoPago = async (promissoriaId: string) => {
+  const marcarComoPago = (promissoriaId: string) => {
     try {
       const dataAtual = new Date().toISOString().split('T')[0];
       
-      const { error } = await supabase
-        .from('promissorias')
-        .update({
-          status: 'pago',
-          data_pagamento: dataAtual
-        })
-        .eq('id', promissoriaId);
-
-      if (error) throw error;
+      const promissoriasData = JSON.parse(localStorage.getItem('promissorias') || '[]');
+      const promissoriasAtualizadas = promissoriasData.map((p: Promissoria) =>
+        p.id === promissoriaId
+          ? { ...p, status: 'pago', data_pagamento: dataAtual }
+          : p
+      );
+      
+      localStorage.setItem('promissorias', JSON.stringify(promissoriasAtualizadas));
 
       toast({
         title: "Sucesso",
@@ -170,6 +257,8 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
         return status;
     }
   };
+
+  const canChangeParcelamento = !settings.parcelamento.bloqueado || isManager;
 
   return (
     <div className="space-y-6">
@@ -235,10 +324,14 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                     id="parcelado"
                     checked={formData.parcelado}
                     onCheckedChange={(checked) =>
-                      setFormData(prev => ({ ...prev, parcelado: checked as boolean }))
+                      canChangeParcelamento && setFormData(prev => ({ ...prev, parcelado: checked as boolean }))
                     }
+                    disabled={!canChangeParcelamento}
                   />
                   <Label htmlFor="parcelado">Parcelado</Label>
+                  {settings.parcelamento.bloqueado && !isManager && (
+                    <span className="text-xs text-gray-500">(bloqueado por gerente)</span>
+                  )}
                 </div>
 
                 {formData.parcelado && (
@@ -248,7 +341,8 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                       id="numero_parcelas"
                       type="number"
                       value={formData.numero_parcelas}
-                      onChange={(e) => setFormData(prev => ({ ...prev, numero_parcelas: e.target.value }))}
+                      onChange={(e) => canChangeParcelamento && setFormData(prev => ({ ...prev, numero_parcelas: e.target.value }))}
+                      disabled={!canChangeParcelamento}
                       required={formData.parcelado}
                     />
                   </div>
@@ -272,6 +366,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                     type="date"
                     value={formData.data_limite}
                     onChange={(e) => setFormData(prev => ({ ...prev, data_limite: e.target.value }))}
+                    min={formData.data_emissao}
                     required
                   />
                 </div>

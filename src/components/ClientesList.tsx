@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -58,12 +57,10 @@ export function ClientesList() {
   const filterClientes = () => {
     let filtered = clientes;
 
-    // Filtro por status de elegibilidade
     if (statusFilter !== 'todos') {
       filtered = filtered.filter(cliente => cliente.elegibilidade === statusFilter);
     }
 
-    // Filtro por busca
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(cliente =>
