@@ -48,6 +48,7 @@ export interface Pagamento {
   promissoriaId?: string; // ID da promissória afetada
   parcelaId?: string; // ID da parcela específica (se for pagamento de parcela)
   observacoes?: string;
+  descricao?: string; // Nova propriedade para descrição do pagamento
   created_at: string;
 }
 

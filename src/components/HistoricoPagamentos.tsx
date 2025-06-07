@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -249,7 +248,7 @@ export function HistoricoPagamentos({
                       <div key={subPagamento.id} className="ml-4 p-3 bg-muted rounded-lg">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium">R$ {subPagamento.valor.toFixed(2)}</span>
-                          <Badge variant="outline" size="sm">
+                          <Badge variant="outline">
                             {formatarTipoPagamento(subPagamento.tipo)}
                           </Badge>
                         </div>
