@@ -8,13 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
-
-interface Parcela {
-  numero: number;
-  valor: number;
-  dataVencimento: string;
-  paga: boolean;
-}
+import { type Parcela, StatusPagamento } from '@/types';
 
 interface CadastroPromissoriaProps {
   clienteId: string;
@@ -22,6 +16,10 @@ interface CadastroPromissoriaProps {
   onCancel: () => void;
 }
 
+/**
+ * Componente para cadastrar novas promissórias
+ * Inclui configurações de parcelamento e validações automáticas
+ */
 export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: CadastroPromissoriaProps) {
   const [formData, setFormData] = useState({
     valor: '',
@@ -36,8 +34,8 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
   const { toast } = useToast();
   const { settings } = useSettings();
 
+  // Configurar parcelamento padrão se ativo
   useEffect(() => {
-    // Configurar parcelamento padrão se ativo
     if (settings.parcelamento.ativo) {
       setFormData(prev => ({
         ...prev,
@@ -47,6 +45,7 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
     }
   }, [settings.parcelamento]);
 
+  // Calcular data limite automaticamente
   useEffect(() => {
     if (formData.dataEmissao) {
       const dataEmissao = new Date(formData.dataEmissao);
@@ -58,6 +57,9 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
     }
   }, [formData.dataEmissao]);
 
+  /**
+   * Gera parcelas para uma promissória parcelada
+   */
   const gerarParcelas = (valor: number, numeroParcelas: number, dataEmissao: string): Parcela[] => {
     const parcelas: Parcela[] = [];
     const valorParcela = valor / numeroParcelas;
@@ -68,10 +70,15 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
       dataVencimento.setMonth(dataVencimento.getMonth() + i);
       
       parcelas.push({
+        id: `${Date.now()}-${i}`,
         numero: i,
         valor: valorParcela,
+        valorPago: 0,
         dataVencimento: dataVencimento.toISOString(),
-        paga: false
+        paga: false,
+        pagoComAtraso: false,
+        status: StatusPagamento.PENDENTE,
+        pagamentos: []
       });
     }
 
@@ -86,6 +93,7 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
       const valor = parseFloat(formData.valor);
       const numeroParcelas = parseInt(formData.numeroParcelas);
 
+      // Validações
       if (valor <= 0) {
         toast({
           title: "Erro de Validação",
@@ -113,9 +121,11 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
         return;
       }
 
+      // Criar nova promissória
       const novaPromissoria = {
         id: Date.now().toString(),
         valor,
+        valorPago: 0,
         dataEmissao: new Date(formData.dataEmissao).toISOString(),
         dataLimite: new Date(formData.dataLimite).toISOString(),
         parcelado: formData.parcelado,
@@ -124,6 +134,8 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
           ? gerarParcelas(valor, numeroParcelas, formData.dataEmissao)
           : undefined,
         observacoes: formData.observacoes.trim() || undefined,
+        status: StatusPagamento.PENDENTE,
+        pagamentos: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
