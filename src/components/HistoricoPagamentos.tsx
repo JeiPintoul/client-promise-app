@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { type Pagamento, type Promissoria, type OrdemPagamento, type FiltroPagamento } from '@/types';
 import { formatarTipoPagamento } from '@/utils/paymentUtils';
 
@@ -14,9 +14,24 @@ interface HistoricoPagamentosProps {
   parcelaId?: string;
 }
 
+interface PagamentoAgrupado {
+  id: string;
+  valor: number;
+  tipo: string;
+  dataHora: string;
+  observacoes?: string;
+  descricao: string;
+  status: 'no_tempo' | 'atrasado';
+  promissoriaInfo: {
+    id: string;
+    valor: number;
+  };
+  subPagamentos?: Pagamento[];
+}
+
 /**
- * Componente para exibir o histórico de pagamentos
- * Suporta filtros por promissória, parcela e ordenação
+ * Componente para exibir o histórico de pagamentos de forma hierárquica
+ * Agrupa pagamentos relacionados e melhora a legibilidade
  */
 export function HistoricoPagamentos({
   promissorias,
@@ -27,80 +42,92 @@ export function HistoricoPagamentos({
   const [filtro, setFiltro] = useState<FiltroPagamento>('todos');
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
-  // Extrair todos os pagamentos relevantes
-  const extrairPagamentos = (): Pagamento[] => {
-    let pagamentos: Pagamento[] = [];
+  // Agrupar pagamentos de forma hierárquica
+  const extrairPagamentosAgrupados = (): PagamentoAgrupado[] => {
+    let pagamentosAgrupados: PagamentoAgrupado[] = [];
 
     promissorias.forEach(promissoria => {
-      // Se é para mostrar pagamentos de uma promissória específica
       if (promissoriaId && promissoria.id !== promissoriaId) return;
 
-      // Pagamentos diretos da promissória
+      // Pagamentos diretos da promissória (não de parcelas específicas)
       if (promissoria.pagamentos) {
-        promissoria.pagamentos.forEach(pagamento => {
-          // Se é para mostrar pagamentos de uma parcela específica
-          if (parcelaId && pagamento.parcelaId !== parcelaId) return;
+        const pagamentosPromissoria = promissoria.pagamentos.filter(p => !p.parcelaId);
+        
+        pagamentosPromissoria.forEach(pagamento => {
+          const dataVencimento = new Date(promissoria.dataLimite);
+          const pagamentoData = new Date(pagamento.dataHora);
           
-          pagamentos.push({
-            ...pagamento,
+          pagamentosAgrupados.push({
+            id: pagamento.id,
+            valor: pagamento.valor,
+            tipo: formatarTipoPagamento(pagamento.tipo),
+            dataHora: pagamento.dataHora,
+            observacoes: pagamento.observacoes,
+            descricao: pagamento.descricao || `Pagamento de promissória completa - R$ ${promissoria.valor.toFixed(2)}`,
+            status: pagamentoData > dataVencimento ? 'atrasado' : 'no_tempo',
             promissoriaInfo: {
               id: promissoria.id,
               valor: promissoria.valor
-            }
-          } as any);
+            },
+            subPagamentos: promissoria.parcelas ? 
+              promissoria.parcelas
+                .filter(parcela => parcela.pagamentos && parcela.pagamentos.length > 0)
+                .flatMap(parcela => 
+                  parcela.pagamentos!.map(p => ({
+                    ...p,
+                    descricao: `Parcela ${parcela.numero}/${promissoria.numeroParcelas} - R$ ${parcela.valor.toFixed(2)}`
+                  }))
+                ) : undefined
+          });
         });
       }
 
-      // Pagamentos das parcelas
+      // Pagamentos de parcelas específicas (quando não há pagamento geral)
       if (promissoria.parcelas) {
         promissoria.parcelas.forEach(parcela => {
-          // Se é para mostrar pagamentos de uma parcela específica
           if (parcelaId && parcela.id !== parcelaId) return;
           
-          if (parcela.pagamentos) {
-            parcela.pagamentos.forEach(pagamento => {
-              pagamentos.push({
-                ...pagamento,
+          if (parcela.pagamentos && parcela.pagamentos.length > 0) {
+            // Verificar se estes pagamentos já estão incluídos em algum pagamento de promissória
+            const pagamentosNaoIncluidos = parcela.pagamentos.filter(pagamentoParcela => 
+              !pagamentosAgrupados.some(grupo => 
+                grupo.subPagamentos?.some(sub => sub.id === pagamentoParcela.id)
+              )
+            );
+
+            pagamentosNaoIncluidos.forEach(pagamento => {
+              const dataVencimento = new Date(parcela.dataVencimento);
+              const pagamentoData = new Date(pagamento.dataHora);
+              
+              pagamentosAgrupados.push({
+                id: pagamento.id,
+                valor: pagamento.valor,
+                tipo: formatarTipoPagamento(pagamento.tipo),
+                dataHora: pagamento.dataHora,
+                observacoes: pagamento.observacoes,
+                descricao: pagamento.descricao || `Pagamento da parcela ${parcela.numero}/${promissoria.numeroParcelas} - R$ ${parcela.valor.toFixed(2)}`,
+                status: pagamentoData > dataVencimento ? 'atrasado' : 'no_tempo',
                 promissoriaInfo: {
                   id: promissoria.id,
                   valor: promissoria.valor
-                },
-                parcelaInfo: {
-                  id: parcela.id,
-                  numero: parcela.numero,
-                  valor: parcela.valor,
-                  dataVencimento: parcela.dataVencimento
                 }
-              } as any);
+              });
             });
           }
         });
       }
     });
 
-    return pagamentos;
+    return pagamentosAgrupados;
   };
 
-  const pagamentos = extrairPagamentos();
+  const pagamentosAgrupados = extrairPagamentosAgrupados();
 
   // Aplicar filtros
-  const pagamentosFiltrados = pagamentos.filter(pagamento => {
+  const pagamentosFiltrados = pagamentosAgrupados.filter(pagamento => {
     if (filtro === 'todos') return true;
-    
-    const dataVencimento = (pagamento as any).parcelaInfo?.dataVencimento || 
-                          promissorias.find(p => p.id === pagamento.promissoriaId)?.dataLimite;
-    
-    if (!dataVencimento) return true;
-    
-    const vencimento = new Date(dataVencimento);
-    const pagamentoData = new Date(pagamento.dataHora);
-    
-    if (filtro === 'atrasados') {
-      return pagamentoData > vencimento;
-    } else if (filtro === 'no_tempo') {
-      return pagamentoData <= vencimento;
-    }
-    
+    if (filtro === 'atrasados') return pagamento.status === 'atrasado';
+    if (filtro === 'no_tempo') return pagamento.status === 'no_tempo';
     return true;
   });
 
@@ -130,24 +157,11 @@ export function HistoricoPagamentos({
     setExpandidos(novosExpandidos);
   };
 
-  const getStatusPagamento = (pagamento: any) => {
-    const dataVencimento = pagamento.parcelaInfo?.dataVencimento || 
-                          promissorias.find(p => p.id === pagamento.promissoriaId)?.dataLimite;
-    
-    if (!dataVencimento) return 'no_tempo';
-    
-    const vencimento = new Date(dataVencimento);
-    const pagamentoData = new Date(pagamento.dataHora);
-    
-    return pagamentoData > vencimento ? 'atrasado' : 'no_tempo';
-  };
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Histórico de Pagamentos</CardTitle>
         
-        {/* Controles de filtro e ordenação */}
         <div className="flex gap-4">
           <div className="flex-1">
             <Select value={ordem} onValueChange={(value: OrdemPagamento) => setOrdem(value)}>
@@ -185,57 +199,69 @@ export function HistoricoPagamentos({
           </p>
         ) : (
           <div className="space-y-3">
-            {pagamentosOrdenados.map((pagamento: any) => (
+            {pagamentosOrdenados.map((pagamento) => (
               <div key={pagamento.id} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-semibold">R$ {pagamento.valor.toFixed(2)}</span>
-                      <Badge variant="outline">
-                        {formatarTipoPagamento(pagamento.tipo)}
-                      </Badge>
-                      <Badge variant={getStatusPagamento(pagamento) === 'atrasado' ? 'destructive' : 'default'}>
-                        {getStatusPagamento(pagamento) === 'atrasado' ? 'Pago com Atraso' : 'Pago no Prazo'}
+                      <Badge variant="outline">{pagamento.tipo}</Badge>
+                      <Badge variant={pagamento.status === 'atrasado' ? 'destructive' : 'default'}>
+                        {pagamento.status === 'atrasado' ? 'Pago com Atraso' : 'Pago no Prazo'}
                       </Badge>
                     </div>
                     
-                    <div className="text-sm text-muted-foreground">
-                      <div>Data: {new Date(pagamento.dataHora).toLocaleString('pt-BR')}</div>
-                      {pagamento.parcelaInfo && (
-                        <div>Parcela {pagamento.parcelaInfo.numero} - Vencimento: {new Date(pagamento.parcelaInfo.dataVencimento).toLocaleDateString('pt-BR')}</div>
-                      )}
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <div><strong>Data:</strong> {new Date(pagamento.dataHora).toLocaleString('pt-BR')}</div>
+                      <div><strong>Descrição:</strong> {pagamento.descricao}</div>
                     </div>
                   </div>
                   
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpansao(pagamento.id)}
-                  >
-                    {expandidos.has(pagamento.id) ? (
-                      <ChevronUp className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
-                    )}
-                  </Button>
+                  {pagamento.subPagamentos && pagamento.subPagamentos.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleExpansao(pagamento.id)}
+                    >
+                      {expandidos.has(pagamento.id) ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                      <span className="ml-1">
+                        {pagamento.subPagamentos.length} parcela(s)
+                      </span>
+                    </Button>
+                  )}
                 </div>
                 
-                {expandidos.has(pagamento.id) && (
-                  <div className="mt-3 pt-3 border-t space-y-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                      <div><strong>Promissória:</strong> R$ {pagamento.promissoriaInfo.valor.toFixed(2)}</div>
-                      {pagamento.parcelaInfo && (
-                        <>
-                          <div><strong>Parcela:</strong> {pagamento.parcelaInfo.numero}</div>
-                          <div><strong>Valor da Parcela:</strong> R$ {pagamento.parcelaInfo.valor.toFixed(2)}</div>
-                        </>
-                      )}
-                    </div>
-                    {pagamento.observacoes && (
-                      <div className="text-sm">
-                        <strong>Observações:</strong> {pagamento.observacoes}
+                {pagamento.observacoes && (
+                  <div className="mt-2 text-sm">
+                    <strong>Observações:</strong> {pagamento.observacoes}
+                  </div>
+                )}
+
+                {/* Sub-pagamentos (parcelas) */}
+                {expandidos.has(pagamento.id) && pagamento.subPagamentos && (
+                  <div className="mt-4 pt-3 border-t space-y-3">
+                    <h5 className="font-medium text-sm">Detalhes por Parcela:</h5>
+                    {pagamento.subPagamentos.map((subPagamento) => (
+                      <div key={subPagamento.id} className="ml-4 p-3 bg-muted rounded-lg">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium">R$ {subPagamento.valor.toFixed(2)}</span>
+                          <Badge variant="outline" size="sm">
+                            {formatarTipoPagamento(subPagamento.tipo)}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          <div>{subPagamento.descricao}</div>
+                          <div>Data: {new Date(subPagamento.dataHora).toLocaleString('pt-BR')}</div>
+                          {subPagamento.observacoes && (
+                            <div>Obs: {subPagamento.observacoes}</div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
                 )}
               </div>

@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -8,7 +7,6 @@ import { ClientesList } from './ClientesList';
 import { CadastroCliente } from './CadastroCliente';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
 import { Configuracoes } from './Configuracoes';
-import { ThemeToggle } from './ThemeToggle';
 import { LogOut, Users, UserPlus, CreditCard, Settings } from 'lucide-react';
 
 export function Dashboard() {
@@ -25,8 +23,6 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <ThemeToggle />
-      
       <header className="bg-card shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
