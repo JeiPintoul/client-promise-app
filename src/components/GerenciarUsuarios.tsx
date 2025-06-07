@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { EditarUsuario } from './EditarUsuario';
+import { Edit, UserPlus } from 'lucide-react';
 
 interface LocalUser {
   id: string;
@@ -17,13 +19,15 @@ interface LocalUser {
 
 export function GerenciarUsuarios() {
   const [profiles, setProfiles] = useState<LocalUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<LocalUser | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     nome: '',
     password: '',
     role: 'funcionario' as 'gerente' | 'funcionario'
   });
   const [loading, setLoading] = useState(false);
-  const { signUpWithName } = useAuth();
+  const { signUpWithName, user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,7 +66,7 @@ export function GerenciarUsuarios() {
         role: 'funcionario'
       });
 
-      // Recarregar lista
+      setShowCreateForm(false);
       fetchProfiles();
 
     } catch (error: any) {
@@ -78,6 +82,30 @@ export function GerenciarUsuarios() {
 
   const updateRole = (userId: string, newRole: 'gerente' | 'funcionario') => {
     try {
+      // Verificar se é o primeiro gerente
+      const gerentes = profiles.filter(p => p.role === 'gerente');
+      const primeiroGerente = gerentes.length > 0 ? gerentes[0] : null;
+      
+      if (primeiroGerente?.id === userId) {
+        toast({
+          title: "Erro",
+          description: "O primeiro gerente não pode ter seu cargo alterado.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Verificar se o usuário atual pode alterar este cargo
+      const targetUser = profiles.find(p => p.id === userId);
+      if (targetUser?.role === 'gerente' && user?.id !== primeiroGerente?.id) {
+        toast({
+          title: "Erro",
+          description: "Apenas o primeiro gerente pode alterar o cargo de outros gerentes.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
       const updatedUsers = allUsers.map((user: LocalUser) =>
         user.id === userId ? { ...user, role: newRole } : user
@@ -109,62 +137,108 @@ export function GerenciarUsuarios() {
     }
   };
 
+  const isPrimeiroGerente = (userId: string) => {
+    const gerentes = profiles.filter(p => p.role === 'gerente');
+    return gerentes.length > 0 && gerentes[0].id === userId;
+  };
+
+  const podeAlterarRole = (targetUser: LocalUser) => {
+    if (isPrimeiroGerente(targetUser.id)) return false;
+    
+    const gerentes = profiles.filter(p => p.role === 'gerente');
+    const primeiroGerente = gerentes.length > 0 ? gerentes[0] : null;
+    
+    if (targetUser.role === 'gerente' && user?.id !== primeiroGerente?.id) return false;
+    
+    return user?.role === 'gerente';
+  };
+
+  if (selectedUser) {
+    return (
+      <EditarUsuario
+        usuario={selectedUser}
+        onBack={() => setSelectedUser(null)}
+        onUpdate={fetchProfiles}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Botão para criar novo usuário */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Gerenciar Usuários</h2>
+        <Button onClick={() => setShowCreateForm(true)}>
+          <UserPlus className="w-4 h-4 mr-2" />
+          Criar Novo Usuário
+        </Button>
+      </div>
+
       {/* Formulário para criar novo usuário */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Criar Novo Usuário</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome</Label>
-                <Input
-                  id="nome"
-                  value={formData.nome}
-                  onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                  required
-                />
+      {showCreateForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Criar Novo Usuário</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome</Label>
+                  <Input
+                    id="nome"
+                    value={formData.nome}
+                    onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="role">Permissão</Label>
+                  <Select
+                    value={formData.role}
+                    onValueChange={(value: 'gerente' | 'funcionario') =>
+                      setFormData(prev => ({ ...prev, role: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="funcionario">Funcionário</SelectItem>
+                      <SelectItem value="gerente">Gerente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="role">Permissão</Label>
-                <Select
-                  value={formData.role}
-                  onValueChange={(value: 'gerente' | 'funcionario') =>
-                    setFormData(prev => ({ ...prev, role: value }))
-                  }
+              <div className="flex gap-2">
+                <Button type="submit" disabled={loading}>
+                  {loading ? 'Criando...' : 'Criar Usuário'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreateForm(false)}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="funcionario">Funcionário</SelectItem>
-                    <SelectItem value="gerente">Gerente</SelectItem>
-                  </SelectContent>
-                </Select>
+                  Cancelar
+                </Button>
               </div>
-            </div>
-
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Criando...' : 'Criar Usuário'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de usuários existentes */}
       <Card>
@@ -175,27 +249,51 @@ export function GerenciarUsuarios() {
           <div className="space-y-4">
             {profiles.map((profile) => (
               <div key={profile.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h3 className="font-semibold">{profile.nome}</h3>
-                  <Badge variant={profile.role === 'gerente' ? 'default' : 'secondary'}>
-                    {profile.role === 'gerente' ? 'Gerente' : 'Funcionário'}
-                  </Badge>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <h3 className="font-semibold">{profile.nome}</h3>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={profile.role === 'gerente' ? 'default' : 'secondary'}>
+                        {profile.role === 'gerente' ? 'Gerente' : 'Funcionário'}
+                      </Badge>
+                      {isPrimeiroGerente(profile.id) && (
+                        <Badge variant="outline">
+                          Primeiro Gerente
+                        </Badge>
+                      )}
+                      {user?.id === profile.id && (
+                        <Badge variant="outline">
+                          Você
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-2">
-                  <Select
-                    value={profile.role}
-                    onValueChange={(value: 'gerente' | 'funcionario') =>
-                      updateRole(profile.id, value)
-                    }
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedUser(profile)}
                   >
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="funcionario">Funcionário</SelectItem>
-                      <SelectItem value="gerente">Gerente</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Edit className="w-4 h-4 mr-1" />
+                    Editar
+                  </Button>
+                  {podeAlterarRole(profile) && (
+                    <Select
+                      value={profile.role}
+                      onValueChange={(value: 'gerente' | 'funcionario') =>
+                        updateRole(profile.id, value)
+                      }
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="funcionario">Funcionário</SelectItem>
+                        <SelectItem value="gerente">Gerente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
             ))}
