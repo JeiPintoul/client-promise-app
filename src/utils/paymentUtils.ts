@@ -151,7 +151,7 @@ export const calcularEstatisticasCliente = (promissorias: Promissoria[]): Estati
       const limite = new Date(promissoria.dataLimite);
       const valorDevido = promissoria.valor - (promissoria.valorPago || 0);
       
-      if (promissoria.status === 'pago') {
+      if (promissoria.status === 'pago' || promissoria.status === 'pago_com_atraso') {
         if (promissoria.status === 'pago_com_atraso') {
           pagamentosAtrasados++;
         } else {
