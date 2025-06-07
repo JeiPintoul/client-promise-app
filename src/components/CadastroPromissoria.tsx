@@ -17,11 +17,6 @@ interface CadastroPromissoriaProps {
   onCancel: () => void;
 }
 
-/**
- * Componente para cadastrar novas promissórias
- * Inclui configurações de parcelamento e validações automáticas
- * Implementa controle de permissões para clientes não elegíveis
- */
 export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: CadastroPromissoriaProps) {
   const [formData, setFormData] = useState({
     valor: '',
@@ -68,9 +63,6 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
     }
   }, [formData.dataEmissao]);
 
-  /**
-   * Gera parcelas para uma promissória parcelada
-   */
   const gerarParcelas = (valor: number, numeroParcelas: number, dataEmissao: string): Parcela[] => {
     const parcelas: Parcela[] = [];
     const valorParcela = valor / numeroParcelas;
@@ -142,7 +134,6 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
           });
           return;
         } else {
-          // Gerente pode prosseguir, mas com aviso
           const confirmar = window.confirm(
             `ATENÇÃO: O cliente ${cliente.nome} não está elegível para novas promissórias. Deseja realmente prosseguir?`
           );
@@ -171,15 +162,19 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
         updated_at: new Date().toISOString()
       };
 
-      // Salvar no localStorage
+      // Salvar no localStorage - CORREÇÃO: preservar promissórias existentes
       const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
       const clienteIndex = clientes.findIndex((c: any) => c.id === clienteId);
       
       if (clienteIndex !== -1) {
+        // Garantir que o array de promissórias existe e preservar as existentes
         if (!clientes[clienteIndex].promissorias) {
           clientes[clienteIndex].promissorias = [];
         }
+        // Adicionar a nova promissória sem sobrescrever as existentes
         clientes[clienteIndex].promissorias.push(novaPromissoria);
+        clientes[clienteIndex].updated_at = new Date().toISOString();
+        
         localStorage.setItem('clientes', JSON.stringify(clientes));
       }
 

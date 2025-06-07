@@ -48,8 +48,16 @@ export interface Pagamento {
   promissoriaId?: string; // ID da promissória afetada
   parcelaId?: string; // ID da parcela específica (se for pagamento de parcela)
   observacoes?: string;
-  descricao?: string; // Nova propriedade para descrição do pagamento
+  descricao?: string; // Descrição detalhada do pagamento com informações de valores
   created_at: string;
+  editado?: boolean; // Indica se o pagamento foi editado
+  historicoEdicoes?: Array<{ // Histórico de edições do pagamento
+    data: string;
+    alteracao: string;
+    valorAnterior?: number;
+    valorNovo?: number;
+    usuario?: string;
+  }>;
 }
 
 export interface EstatisticasCliente {

@@ -22,11 +22,6 @@ interface RegistroPagamentoProps {
   valorSugerido?: number;
 }
 
-/**
- * Componente para registrar pagamentos de forma manual
- * Suporta pagamento geral (distribuição automática), por promissória ou por parcela
- * Inclui validações e confirmações customizadas
- */
 export function RegistroPagamento({
   cliente,
   promissorias,
@@ -59,7 +54,6 @@ export function RegistroPagamento({
   const validarFormulario = (): boolean => {
     const valor = parseFloat(formData.valor);
     
-    // Validação de valor negativo
     if (valor <= 0) {
       toast({
         title: "Erro de Validação",
@@ -69,7 +63,6 @@ export function RegistroPagamento({
       return false;
     }
 
-    // Validação de tipo de pagamento
     if (!formData.tipo) {
       toast({
         title: "Erro de Validação",
@@ -79,7 +72,6 @@ export function RegistroPagamento({
       return false;
     }
 
-    // Validação para pagamento geral - verificar se há dívidas
     if (tipo === 'geral') {
       const totalDevido = promissorias.reduce((acc, p) => acc + (p.valor - (p.valorPago || 0)), 0);
       
@@ -169,7 +161,6 @@ export function RegistroPagamento({
     const valorDevido = promissoria.valor - (promissoria.valorPago || 0);
 
     if (valor > valorDevido) {
-      // Mostrar dialog de confirmação personalizado
       setConfirmDialog({
         open: true,
         title: "Valor Excedente Detectado",
@@ -197,7 +188,6 @@ export function RegistroPagamento({
     setLoading(true);
     
     try {
-      // Criar pagamento principal
       const novoPagamento: Pagamento = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         valor,
@@ -205,9 +195,64 @@ export function RegistroPagamento({
         dataHora: formData.dataHora,
         promissoriaId: promissoria.id,
         observacoes: formData.observacoes,
-        descricao: `Pagamento de promissória - R$ ${promissoria.valor.toFixed(2)}`,
+        descricao: `Pagamento de promissória completa - R$ ${promissoria.valor.toFixed(2)}`,
         created_at: new Date().toISOString()
       };
+
+      // Distribuir o valor entre as parcelas se for parcelada
+      if (promissoria.parcelado && promissoria.parcelas) {
+        let valorRestante = valor;
+        const valorAnteriorPromissoria = promissoria.valorPago || 0;
+        
+        // Ordenar parcelas por vencimento
+        const parcelasOrdenadas = [...promissoria.parcelas].sort((a, b) => 
+          new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime()
+        );
+        
+        parcelasOrdenadas.forEach(parcela => {
+          if (valorRestante <= 0) return;
+          
+          const valorDevidoParcela = parcela.valor - (parcela.valorPago || 0);
+          if (valorDevidoParcela <= 0) return;
+          
+          const valorParaParcela = Math.min(valorRestante, valorDevidoParcela);
+          const valorAnteriorParcela = parcela.valorPago || 0;
+          
+          // Criar pagamento específico da parcela
+          const pagamentoParcela: Pagamento = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9) + '-parcela',
+            valor: valorParaParcela,
+            tipo: formData.tipo,
+            dataHora: formData.dataHora,
+            promissoriaId: promissoria.id,
+            parcelaId: parcela.id,
+            observacoes: formData.observacoes,
+            descricao: `Pagamento automático parcela ${parcela.numero}/${promissoria.numeroParcelas} | Anterior: R$ ${valorAnteriorParcela.toFixed(2)} → Atual: R$ ${(valorAnteriorParcela + valorParaParcela).toFixed(2)} | Restante: R$ ${(parcela.valor - valorAnteriorParcela - valorParaParcela).toFixed(2)}`,
+            created_at: new Date().toISOString()
+          };
+          
+          // Atualizar parcela
+          parcela.valorPago = valorAnteriorParcela + valorParaParcela;
+          parcela.pagamentos = [...(parcela.pagamentos || []), pagamentoParcela];
+          
+          // Verificar se foi pago com atraso
+          const hoje = new Date();
+          const vencimento = new Date(parcela.dataVencimento);
+          if (parcela.valorPago >= parcela.valor) {
+            parcela.paga = true;
+            parcela.pagoComAtraso = vencimento < hoje;
+          }
+          parcela.status = calcularStatusParcela(parcela);
+          
+          valorRestante -= valorParaParcela;
+        });
+        
+        // Atualizar descrição do pagamento principal
+        novoPagamento.descricao = `Pagamento de promissória (distribuído entre parcelas) | Anterior: R$ ${valorAnteriorPromissoria.toFixed(2)} → Atual: R$ ${(valorAnteriorPromissoria + valor).toFixed(2)} | Restante: R$ ${(promissoria.valor - valorAnteriorPromissoria - valor).toFixed(2)}`;
+      } else {
+        const valorAnterior = promissoria.valorPago || 0;
+        novoPagamento.descricao = `Pagamento de promissória completa | Anterior: R$ ${valorAnterior.toFixed(2)} → Atual: R$ ${(valorAnterior + valor).toFixed(2)} | Restante: R$ ${(promissoria.valor - valorAnterior - valor).toFixed(2)}`;
+      }
 
       // Atualizar promissória
       promissoria.valorPago = (promissoria.valorPago || 0) + valor;
@@ -257,7 +302,6 @@ export function RegistroPagamento({
     const valorDevido = parcela.valor - (parcela.valorPago || 0);
 
     if (valor > valorDevido) {
-      // Mostrar dialog de confirmação personalizado
       setConfirmDialog({
         open: true,
         title: "Valor Excedente Detectado",
@@ -285,7 +329,9 @@ export function RegistroPagamento({
     setLoading(true);
     
     try {
-      // Criar pagamento
+      const valorAnteriorParcela = parcela.valorPago || 0;
+      const valorAnteriorPromissoria = promissoria.valorPago || 0;
+      
       const novoPagamento: Pagamento = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         valor,
@@ -294,12 +340,12 @@ export function RegistroPagamento({
         promissoriaId: promissoria.id,
         parcelaId: parcela.id,
         observacoes: formData.observacoes,
-        descricao: `Pagamento de parcela ${parcela.numero}/${promissoria.numeroParcelas} - R$ ${parcela.valor.toFixed(2)}`,
+        descricao: `Pagamento parcela ${parcela.numero}/${promissoria.numeroParcelas} | Anterior: R$ ${valorAnteriorParcela.toFixed(2)} → Atual: R$ ${(valorAnteriorParcela + valor).toFixed(2)} | Restante: R$ ${(parcela.valor - valorAnteriorParcela - valor).toFixed(2)}`,
         created_at: new Date().toISOString()
       };
 
       // Atualizar parcela
-      parcela.valorPago = (parcela.valorPago || 0) + valor;
+      parcela.valorPago = valorAnteriorParcela + valor;
       parcela.pagamentos = [...(parcela.pagamentos || []), novoPagamento];
 
       // Verificar se foi pago com atraso
