@@ -6,6 +6,7 @@ interface ParcelamentoConfig {
   numeroPadrao: number;
   forcado: boolean; // apenas gerentes podem forçar
   bloqueado: boolean; // bloqueia alteração por usuários comuns
+  podeAlterar: boolean; // se o usuário pode alterar o parcelamento
 }
 
 interface Settings {
@@ -25,7 +26,8 @@ const defaultSettings: Settings = {
     ativo: false,
     numeroPadrao: 2,
     forcado: false,
-    bloqueado: false
+    bloqueado: false,
+    podeAlterar: true
   }
 };
 
