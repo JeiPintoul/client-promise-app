@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { TipoPagamento, type Promissoria, type Cliente, type Pagamento } from '@/types';
+import { distribuirPagamentoAutomatico, calcularStatusPromissoria, calcularStatusParcela } from '@/utils/paymentUtils';
 
 interface RegistroPagamentoProps {
   cliente: Cliente;
@@ -102,19 +103,135 @@ export function RegistroPagamento({
   };
 
   const processarPagamentoGeral = async (valor: number): Promise<Promissoria[]> => {
-    // Implementar distribuição automática
-    // Por ora, uma implementação simples
-    return promissorias.map(p => ({ ...p }));
+    const pagamentoBase = {
+      valor,
+      tipo: formData.tipo,
+      dataHora: formData.dataHora,
+      observacoes: formData.observacoes
+    };
+
+    const { promissoriasAtualizadas } = distribuirPagamentoAutomatico(
+      valor,
+      promissorias,
+      pagamentoBase
+    );
+
+    return promissoriasAtualizadas;
   };
 
   const processarPagamentoPromissoria = async (valor: number, promissoriaId: string): Promise<Promissoria[]> => {
-    // Implementar pagamento de promissória específica
-    return promissorias.map(p => ({ ...p }));
+    const promissoriaIndex = promissorias.findIndex(p => p.id === promissoriaId);
+    if (promissoriaIndex === -1) {
+      throw new Error('Promissória não encontrada');
+    }
+
+    const promissoria = { ...promissorias[promissoriaIndex] };
+    const valorDevido = promissoria.valor - (promissoria.valorPago || 0);
+
+    if (valor > valorDevido) {
+      const confirmar = window.confirm(
+        `O valor informado (R$ ${valor.toFixed(2)}) é maior que o valor devido (R$ ${valorDevido.toFixed(2)}). Deseja continuar?`
+      );
+      if (!confirmar) {
+        throw new Error('Pagamento cancelado pelo usuário');
+      }
+    }
+
+    // Criar pagamento
+    const novoPagamento: Pagamento = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      valor: Math.min(valor, valorDevido),
+      tipo: formData.tipo,
+      dataHora: formData.dataHora,
+      promissoriaId: promissoria.id,
+      observacoes: formData.observacoes,
+      created_at: new Date().toISOString()
+    };
+
+    // Atualizar promissória
+    promissoria.valorPago = (promissoria.valorPago || 0) + novoPagamento.valor;
+    promissoria.pagamentos = [...(promissoria.pagamentos || []), novoPagamento];
+    promissoria.updated_at = new Date().toISOString();
+
+    // Verificar se foi pago com atraso
+    const hoje = new Date();
+    const limite = new Date(promissoria.dataLimite);
+    if (promissoria.valorPago >= promissoria.valor && limite < hoje) {
+      promissoria.status = 'pago_com_atraso';
+    } else {
+      promissoria.status = calcularStatusPromissoria(promissoria);
+    }
+
+    const novasPromissorias = [...promissorias];
+    novasPromissorias[promissoriaIndex] = promissoria;
+
+    return novasPromissorias;
   };
 
   const processarPagamentoParcela = async (valor: number, promissoriaId: string, parcelaId: string): Promise<Promissoria[]> => {
-    // Implementar pagamento de parcela específica
-    return promissorias.map(p => ({ ...p }));
+    const promissoriaIndex = promissorias.findIndex(p => p.id === promissoriaId);
+    if (promissoriaIndex === -1) {
+      throw new Error('Promissória não encontrada');
+    }
+
+    const promissoria = { ...promissorias[promissoriaIndex] };
+    if (!promissoria.parcelas) {
+      throw new Error('Promissória não é parcelada');
+    }
+
+    const parcelaIndex = promissoria.parcelas.findIndex(p => p.id === parcelaId);
+    if (parcelaIndex === -1) {
+      throw new Error('Parcela não encontrada');
+    }
+
+    const parcela = { ...promissoria.parcelas[parcelaIndex] };
+    const valorDevido = parcela.valor - (parcela.valorPago || 0);
+
+    if (valor > valorDevido) {
+      const confirmar = window.confirm(
+        `O valor informado (R$ ${valor.toFixed(2)}) é maior que o valor devido da parcela (R$ ${valorDevido.toFixed(2)}). Deseja continuar?`
+      );
+      if (!confirmar) {
+        throw new Error('Pagamento cancelado pelo usuário');
+      }
+    }
+
+    // Criar pagamento
+    const novoPagamento: Pagamento = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      valor: Math.min(valor, valorDevido),
+      tipo: formData.tipo,
+      dataHora: formData.dataHora,
+      promissoriaId: promissoria.id,
+      parcelaId: parcela.id,
+      observacoes: formData.observacoes,
+      created_at: new Date().toISOString()
+    };
+
+    // Atualizar parcela
+    parcela.valorPago = (parcela.valorPago || 0) + novoPagamento.valor;
+    parcela.pagamentos = [...(parcela.pagamentos || []), novoPagamento];
+
+    // Verificar se foi pago com atraso
+    const hoje = new Date();
+    const vencimento = new Date(parcela.dataVencimento);
+    if (parcela.valorPago >= parcela.valor) {
+      parcela.paga = true;
+      parcela.pagoComAtraso = vencimento < hoje;
+    }
+    parcela.status = calcularStatusParcela(parcela);
+
+    // Atualizar promissória
+    promissoria.parcelas[parcelaIndex] = parcela;
+    promissoria.valorPago = promissoria.parcelas.reduce((acc, p) => acc + (p.valorPago || 0), 0);
+    promissoria.pagamentos = [...(promissoria.pagamentos || []), novoPagamento];
+    promissoria.updated_at = new Date().toISOString();
+    promissoria.status = calcularStatusPromissoria(promissoria);
+
+    const novasPromissorias = [...promissorias];
+    novasPromissorias[promissoriaIndex] = promissoria;
+
+    return novasPromissorias;
   };
 
   const getTitulo = () => {

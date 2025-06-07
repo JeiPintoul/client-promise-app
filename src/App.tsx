@@ -17,7 +17,7 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-lg">Carregando...</div>
       </div>
     );
@@ -32,13 +32,13 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AuthProvider>
-          <SettingsProvider>
+        <SettingsProvider>
+          <AuthProvider>
             <Routes>
               <Route path="*" element={<AppContent />} />
             </Routes>
-          </SettingsProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </SettingsProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

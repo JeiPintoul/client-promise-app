@@ -3,17 +3,20 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowLeft, Plus, Edit, Trash2, CreditCard } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, CreditCard, Save, X, History } from 'lucide-react';
 import { ListaParcelas } from './ListaParcelas';
 import { EditarPromissoria } from './EditarPromissoria';
 import { CadastroPromissoria } from './CadastroPromissoria';
 import { RegistroPagamento } from './RegistroPagamento';
+import { HistoricoPagamentos } from './HistoricoPagamentos';
 import { type Cliente, type Promissoria } from '@/types';
 import { calcularEstatisticasCliente, calcularStatusPromissoria, formatarStatus } from '@/utils/paymentUtils';
 
-type ViewState = 'detail' | 'editar-promissoria' | 'registrar-pagamento';
+type ViewState = 'detail' | 'editar-promissoria' | 'registrar-pagamento' | 'historico-pagamentos';
 
 interface ClienteDetailProps {
   cliente: Cliente;
@@ -31,6 +34,8 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
   const [viewState, setViewState] = useState<ViewState>('detail');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editandoCliente, setEditandoCliente] = useState(false);
+  const [clienteEditado, setClienteEditado] = useState(cliente);
   const [pagamentoConfig, setPagamentoConfig] = useState({
     tipo: 'geral' as 'geral' | 'promissoria' | 'parcela',
     promissoriaId: '',
@@ -60,6 +65,50 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
     } finally {
       setLoading(false);
     }
+  };
+
+  const salvarEdicaoCliente = () => {
+    try {
+      const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
+      const clienteIndex = clientes.findIndex((c: any) => c.id === cliente.id);
+
+      if (clienteIndex !== -1) {
+        clientes[clienteIndex] = {
+          ...clientes[clienteIndex],
+          ...clienteEditado,
+          updated_at: new Date().toISOString()
+        };
+        localStorage.setItem('clientes', JSON.stringify(clientes));
+        
+        setEditandoCliente(false);
+        onUpdate();
+        
+        toast({
+          title: "Sucesso",
+          description: "Informações do cliente atualizadas com sucesso!",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar informações: " + error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const toggleElegibilidade = () => {
+    if (!isManager) {
+      toast({
+        title: "Acesso Negado",
+        description: "Apenas gerentes podem alterar a elegibilidade do cliente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const novaElegibilidade = clienteEditado.elegibilidade === 'elegivel' ? 'nao_elegivel' : 'elegivel';
+    setClienteEditado(prev => ({ ...prev, elegibilidade: novaElegibilidade }));
   };
 
   const deletePromissoria = (promissoriaId: string) => {
@@ -178,6 +227,21 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
     );
   }
 
+  if (viewState === 'historico-pagamentos') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={handleBackToDetail}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Voltar
+          </Button>
+          <h1 className="text-2xl font-bold">Histórico de Pagamentos - {cliente.nome}</h1>
+        </div>
+        <HistoricoPagamentos promissorias={promissorias} />
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="text-center py-4">Carregando...</div>;
   }
@@ -194,34 +258,119 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
             Voltar
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{cliente.nome}</h1>
-            {cliente.apelido && (
-              <p className="text-lg text-muted-foreground">({cliente.apelido})</p>
+            <h1 className="text-3xl font-bold">{clienteEditado.nome}</h1>
+            {clienteEditado.apelido && (
+              <p className="text-lg text-muted-foreground">({clienteEditado.apelido})</p>
             )}
           </div>
         </div>
-        <Badge variant={cliente.elegibilidade === 'elegivel' ? 'default' : 'destructive'}>
-          {cliente.elegibilidade === 'elegivel' ? 'Elegível' : 'Não Elegível'}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setViewState('historico-pagamentos')}
+          >
+            <History className="w-4 h-4 mr-2" />
+            Histórico
+          </Button>
+          <Badge 
+            variant={clienteEditado.elegibilidade === 'elegivel' ? 'default' : 'destructive'}
+            className="cursor-pointer"
+            onClick={toggleElegibilidade}
+          >
+            {clienteEditado.elegibilidade === 'elegivel' ? 'Elegível' : 'Não Elegível'}
+          </Badge>
+        </div>
       </div>
 
       {/* Informações do Cliente */}
       <Card>
         <CardHeader>
-          <CardTitle>Informações do Cliente</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Informações do Cliente</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => editandoCliente ? salvarEdicaoCliente() : setEditandoCliente(true)}
+            >
+              {editandoCliente ? (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Salvar
+                </>
+              ) : (
+                <>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar
+                </>
+              )}
+            </Button>
+            {editandoCliente && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditandoCliente(false);
+                  setClienteEditado(cliente);
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <strong>Telefone:</strong> {cliente.telefone}
+          {editandoCliente ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium">Nome:</label>
+                <Input
+                  value={clienteEditado.nome}
+                  onChange={(e) => setClienteEditado(prev => ({ ...prev, nome: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Apelido:</label>
+                <Input
+                  value={clienteEditado.apelido || ''}
+                  onChange={(e) => setClienteEditado(prev => ({ ...prev, apelido: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Telefone:</label>
+                <Input
+                  value={clienteEditado.telefone}
+                  onChange={(e) => setClienteEditado(prev => ({ ...prev, telefone: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">CPF:</label>
+                <Input
+                  value={clienteEditado.cpf}
+                  onChange={(e) => setClienteEditado(prev => ({ ...prev, cpf: e.target.value }))}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">Endereço:</label>
+                <Textarea
+                  value={clienteEditado.endereco}
+                  onChange={(e) => setClienteEditado(prev => ({ ...prev, endereco: e.target.value }))}
+                  rows={2}
+                />
+              </div>
             </div>
-            <div>
-              <strong>CPF:</strong> {cliente.cpf}
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <strong>Telefone:</strong> {clienteEditado.telefone}
+              </div>
+              <div>
+                <strong>CPF:</strong> {clienteEditado.cpf}
+              </div>
+              <div>
+                <strong>Endereço:</strong> {clienteEditado.endereco}
+              </div>
             </div>
-            <div>
-              <strong>Endereço:</strong> {cliente.endereco}
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -238,51 +387,51 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">
+            <div className="p-4 bg-primary/10 rounded-lg">
+              <div className="text-2xl font-bold text-primary">
                 R$ {estatisticas.valorTotal.toFixed(2)}
               </div>
-              <div className="text-sm text-blue-800">Valor Total</div>
+              <div className="text-sm text-muted-foreground">Valor Total</div>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">
+            <div className="p-4 bg-green-100 dark:bg-green-900/20 rounded-lg">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                 R$ {estatisticas.valorPago.toFixed(2)}
               </div>
-              <div className="text-sm text-green-800">Valor Pago</div>
+              <div className="text-sm text-green-800 dark:text-green-300">Valor Pago</div>
             </div>
-            <div className="p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">
+            <div className="p-4 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                 R$ {estatisticas.valorPendente.toFixed(2)}
               </div>
-              <div className="text-sm text-yellow-800">Valor Pendente</div>
+              <div className="text-sm text-yellow-800 dark:text-yellow-300">Valor Pendente</div>
             </div>
-            <div className="p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">
+            <div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-lg">
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                 R$ {estatisticas.valorAtrasado.toFixed(2)}
               </div>
-              <div className="text-sm text-red-800">Valor Atrasado</div>
+              <div className="text-sm text-red-800 dark:text-red-300">Valor Atrasado</div>
             </div>
           </div>
           
           {/* Estatísticas de Pagamentos */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-3 bg-emerald-50 rounded-lg">
-              <div className="text-xl font-bold text-emerald-600">
+            <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg">
+              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                 {estatisticas.pagamentosNoTempo}
               </div>
-              <div className="text-sm text-emerald-800">Pagamentos no Prazo</div>
+              <div className="text-sm text-emerald-800 dark:text-emerald-300">Pagamentos no Prazo</div>
             </div>
-            <div className="p-3 bg-orange-50 rounded-lg">
-              <div className="text-xl font-bold text-orange-600">
+            <div className="p-3 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
+              <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
                 {estatisticas.pagamentosAtrasados}
               </div>
-              <div className="text-sm text-orange-800">Pagamentos Atrasados</div>
+              <div className="text-sm text-orange-800 dark:text-orange-300">Pagamentos Atrasados</div>
             </div>
-            <div className="p-3 bg-slate-50 rounded-lg">
-              <div className="text-xl font-bold text-slate-600">
+            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
+              <div className="text-xl font-bold text-slate-600 dark:text-slate-300">
                 {estatisticas.pagamentosPendentes}
               </div>
-              <div className="text-sm text-slate-800">Pagamentos Pendentes</div>
+              <div className="text-sm text-slate-800 dark:text-slate-400">Pagamentos Pendentes</div>
             </div>
           </div>
         </CardContent>
@@ -313,7 +462,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
 
           <div className="space-y-6">
             {promissorias.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">
+              <p className="text-center text-muted-foreground py-8">
                 Nenhuma promissória encontrada para este cliente.
               </p>
             ) : (
@@ -331,7 +480,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                           </Badge>
                         )}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                         <div>
                           <strong>Emissão:</strong> {new Date(promissoria.dataEmissao).toLocaleDateString('pt-BR')}
                         </div>
@@ -339,14 +488,14 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                           <strong>Limite:</strong> {new Date(promissoria.dataLimite).toLocaleDateString('pt-BR')}
                         </div>
                         <div>
-                          <strong>Valor Pago:</strong> <span className="text-green-600">R$ {(promissoria.valorPago || 0).toFixed(2)}</span>
+                          <strong>Valor Pago:</strong> <span className="text-green-600 dark:text-green-400">R$ {(promissoria.valorPago || 0).toFixed(2)}</span>
                         </div>
                         <div>
-                          <strong>Restante:</strong> <span className="text-red-600">R$ {(promissoria.valor - (promissoria.valorPago || 0)).toFixed(2)}</span>
+                          <strong>Restante:</strong> <span className="text-red-600 dark:text-red-400">R$ {(promissoria.valor - (promissoria.valorPago || 0)).toFixed(2)}</span>
                         </div>
                       </div>
                       {promissoria.observacoes && (
-                        <div className="text-sm text-gray-600 mt-2">
+                        <div className="text-sm text-muted-foreground mt-2">
                           <strong>Observações:</strong> {promissoria.observacoes}
                         </div>
                       )}

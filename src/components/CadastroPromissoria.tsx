@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
-import { type Parcela, StatusPagamento } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { type Parcela, StatusPagamento, type Cliente } from '@/types';
 
 interface CadastroPromissoriaProps {
   clienteId: string;
@@ -19,6 +20,7 @@ interface CadastroPromissoriaProps {
 /**
  * Componente para cadastrar novas promissórias
  * Inclui configurações de parcelamento e validações automáticas
+ * Implementa controle de permissões para clientes não elegíveis
  */
 export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: CadastroPromissoriaProps) {
   const [formData, setFormData] = useState({
@@ -31,8 +33,17 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
   });
   
   const [loading, setLoading] = useState(false);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const { toast } = useToast();
   const { settings } = useSettings();
+  const { isManager } = useAuth();
+
+  // Carregar informações do cliente
+  useEffect(() => {
+    const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
+    const clienteEncontrado = clientes.find((c: Cliente) => c.id === clienteId);
+    setCliente(clienteEncontrado || null);
+  }, [clienteId]);
 
   // Configurar parcelamento padrão se ativo
   useEffect(() => {
@@ -121,6 +132,26 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
         return;
       }
 
+      // Verificar elegibilidade do cliente
+      if (cliente?.elegibilidade === 'nao_elegivel') {
+        if (!isManager) {
+          toast({
+            title: "Acesso Negado",
+            description: "Funcionários não podem criar promissórias para clientes não elegíveis.",
+            variant: "destructive",
+          });
+          return;
+        } else {
+          // Gerente pode prosseguir, mas com aviso
+          const confirmar = window.confirm(
+            `ATENÇÃO: O cliente ${cliente.nome} não está elegível para novas promissórias. Deseja realmente prosseguir?`
+          );
+          if (!confirmar) {
+            return;
+          }
+        }
+      }
+
       // Criar nova promissória
       const novaPromissoria = {
         id: Date.now().toString(),
@@ -154,7 +185,9 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
 
       toast({
         title: "Sucesso",
-        description: "Promissória cadastrada com sucesso!",
+        description: cliente?.elegibilidade === 'nao_elegivel' && isManager 
+          ? "Promissória cadastrada com sucesso (cliente não elegível)!"
+          : "Promissória cadastrada com sucesso!",
       });
 
       onSuccess();
@@ -176,6 +209,14 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
     <Card className="mb-6">
       <CardHeader>
         <CardTitle>Nova Promissória</CardTitle>
+        {cliente?.elegibilidade === 'nao_elegivel' && (
+          <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-lg">
+            <p className="text-red-800 dark:text-red-300 text-sm">
+              ⚠️ <strong>Atenção:</strong> Este cliente não está elegível para novas promissórias.
+              {!isManager && " Apenas gerentes podem prosseguir."}
+            </p>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -253,11 +294,15 @@ export function CadastroPromissoria({ clienteId, onSuccess, onCancel }: Cadastro
               value={formData.observacoes}
               onChange={(e) => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
               rows={3}
+              placeholder="Adicione observações sobre esta promissória..."
             />
           </div>
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={loading}>
+            <Button 
+              type="submit" 
+              disabled={loading || (cliente?.elegibilidade === 'nao_elegivel' && !isManager)}
+            >
               {loading ? 'Cadastrando...' : 'Cadastrar Promissória'}
             </Button>
             <Button type="button" variant="outline" onClick={onCancel}>

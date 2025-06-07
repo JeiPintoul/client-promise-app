@@ -1,60 +1,50 @@
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { ThemeToggle } from './ThemeToggle';
 
 export function LoginForm() {
-  const [nome, setNome] = useState('');
-  const [password, setPassword] = useState('');
-  const [nomeNovoUsuario, setNomeNovoUsuario] = useState('');
-  const [senhaNovoUsuario, setSenhaNovoUsuario] = useState('');
-  const [selectedUser, setSelectedUser] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [users, setUsers] = useState<Array<{ nome: string; id: string }>>([]);
-  const { signInWithName, signUpWithName, loading } = useAuth();
+  const [isLogin, setIsLogin] = useState(true);
+  const [formData, setFormData] = useState({
+    nome: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [loading, setLoading] = useState(false);
+  
+  const { signInWithName, signUpWithName } = useAuth();
   const { toast } = useToast();
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = () => {
-    try {
-      const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
-      setUsers(allUsers);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      setUsers([]);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setLoading(true);
+
     try {
-      if (isSignUp) {
-        await signUpWithName(nomeNovoUsuario, senhaNovoUsuario, 'funcionario');
-        
-        toast({
-          title: "Sucesso",
-          description: "Usuário criado com sucesso!",
-        });
-        
-        setIsSignUp(false);
-        fetchUsers();
-        setNomeNovoUsuario('');
-        setSenhaNovoUsuario('');
-      } else {
-        await signInWithName(nome, password);
-        
+      if (isLogin) {
+        await signInWithName(formData.nome, formData.password);
         toast({
           title: "Sucesso",
           description: "Login realizado com sucesso!",
+        });
+      } else {
+        if (formData.password !== formData.confirmPassword) {
+          toast({
+            title: "Erro",
+            description: "As senhas não coincidem.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        await signUpWithName(formData.nome, formData.password);
+        toast({
+          title: "Sucesso",
+          description: "Usuário cadastrado com sucesso!",
         });
       }
     } catch (error: any) {
@@ -63,109 +53,70 @@ export function LoginForm() {
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUserSelect = (userName: string) => {
-    setSelectedUser(userName);
-    setNome(userName);
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <ThemeToggle />
+      
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">
-            {isSignUp ? 'Criar Usuário' : 'Sistema de Gestão'}
+          <CardTitle className="text-center">
+            {isLogin ? 'Entrar' : 'Cadastrar'}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isSignUp && users.length > 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="user-select">Selecionar Usuário</Label>
-                <Select onValueChange={handleUserSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Escolha um usuário..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.nome}>
-                        {user.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {isSignUp ? (
-              <div className="space-y-2">
-                <Label htmlFor="nome-novo">Nome do Usuário</Label>
-                <Input
-                  id="nome-novo"
-                  type="text"
-                  value={nomeNovoUsuario}
-                  onChange={(e) => setNomeNovoUsuario(e.target.value)}
-                  placeholder="Digite o nome do usuário"
-                  required
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome do Usuário</Label>
-                <Input
-                  id="nome"
-                  type="text"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Digite seu nome"
-                  required
-                  disabled={selectedUser !== ''}
-                />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="nome">Nome</Label>
+              <Input
+                id="nome"
+                type="text"
+                value={formData.nome}
+                onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
+                required
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <Input
                 id="password"
                 type="password"
-                value={isSignUp ? senhaNovoUsuario : password}
-                onChange={(e) => isSignUp ? setSenhaNovoUsuario(e.target.value) : setPassword(e.target.value)}
-                placeholder="Digite sua senha"
+                value={formData.password}
+                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                 required
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {isSignUp ? 'Criar Usuário' : 'Entrar'}
-            </Button>
-
-            <div className="text-center">
-              <Button
-                type="button"
-                variant="link"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setNome('');
-                  setPassword('');
-                  setNomeNovoUsuario('');
-                  setSenhaNovoUsuario('');
-                  setSelectedUser('');
-                }}
-                className="text-sm"
-              >
-                {isSignUp ? 'Voltar ao Login' : 'Primeiro acesso? Criar conta'}
-              </Button>
-            </div>
-
-            {!isSignUp && users.length === 0 && (
-              <div className="text-center text-sm text-gray-600">
-                <p>Nenhum usuário encontrado.</p>
-                <p>Use "Primeiro acesso" para criar o primeiro usuário.</p>
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  required
+                />
               </div>
             )}
+
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Processando...' : (isLogin ? 'Entrar' : 'Cadastrar')}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => setIsLogin(!isLogin)}
+            >
+              {isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
+            </Button>
           </form>
         </CardContent>
       </Card>
