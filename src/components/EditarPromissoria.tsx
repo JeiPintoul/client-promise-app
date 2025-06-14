@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,7 +66,12 @@ export function EditarPromissoria({ promissoria, clienteId, onBack, onUpdate }: 
 
     for (let i = 1; i <= numeroParcelas; i++) {
       const dataVencimento = new Date(dataBase);
-      dataVencimento.setMonth(dataVencimento.getMonth() + i);
+      // Para parcela única (não parcelado), usar a data limite da promissória
+      if (numeroParcelas === 1) {
+        dataVencimento.setDate(dataVencimento.getDate() + 30);
+      } else {
+        dataVencimento.setMonth(dataVencimento.getMonth() + i);
+      }
       
       // Manter o status de pagamento das parcelas existentes
       const parcelaExistente = promissoria.parcelas?.find(p => p.numero === i);
@@ -89,7 +93,7 @@ export function EditarPromissoria({ promissoria, clienteId, onBack, onUpdate }: 
 
     try {
       const valor = parseFloat(formData.valor);
-      const numeroParcelas = parseInt(formData.numeroParcelas);
+      const numeroParcelas = formData.parcelado ? parseInt(formData.numeroParcelas) : 1;
 
       if (valor <= 0) {
         toast({
@@ -124,10 +128,8 @@ export function EditarPromissoria({ promissoria, clienteId, onBack, onUpdate }: 
         dataEmissao: new Date(formData.dataEmissao).toISOString(),
         dataLimite: new Date(formData.dataLimite).toISOString(),
         parcelado: formData.parcelado,
-        numeroParcelas: formData.parcelado ? numeroParcelas : undefined,
-        parcelas: formData.parcelado 
-          ? gerarParcelas(valor, numeroParcelas, formData.dataEmissao)
-          : undefined,
+        numeroParcelas: numeroParcelas,
+        parcelas: gerarParcelas(valor, numeroParcelas, formData.dataEmissao),
         observacoes: formData.observacoes.trim() || undefined,
         updated_at: new Date().toISOString()
       };

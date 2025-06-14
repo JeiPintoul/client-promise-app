@@ -91,11 +91,12 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
             </div>
           </div>
           
-          {promissoria.parcelado && (
-            <div>
-              <strong>Parcelamento:</strong> {promissoria.numeroParcelas}x de R$ {(promissoria.valor / (promissoria.numeroParcelas || 1)).toFixed(2)}
-            </div>
-          )}
+          <div>
+            <strong>Tipo:</strong> {promissoria.parcelado 
+              ? `Parcelado em ${promissoria.numeroParcelas}x de R$ ${(promissoria.valor / (promissoria.numeroParcelas || 1)).toFixed(2)}`
+              : 'Pagamento único'
+            }
+          </div>
           
           {promissoria.observacoes && (
             <div>
@@ -105,11 +106,13 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
         </CardContent>
       </Card>
 
-      {promissoria.parcelado && promissoria.parcelas && (
+      {promissoria.parcelas && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Parcelas</CardTitle>
+              <CardTitle>
+                {promissoria.parcelado ? 'Parcelas' : 'Detalhes do Pagamento'}
+              </CardTitle>
               <Button
                 variant="outline"
                 onClick={() => setShowParcelas(!showParcelas)}
@@ -117,12 +120,12 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
                 {showParcelas ? (
                   <>
                     <EyeOff className="w-4 h-4 mr-2" />
-                    Ocultar Parcelas
+                    Ocultar {promissoria.parcelado ? 'Parcelas' : 'Detalhes'}
                   </>
                 ) : (
                   <>
                     <Eye className="w-4 h-4 mr-2" />
-                    Exibir Parcelas
+                    Exibir {promissoria.parcelado ? 'Parcelas' : 'Detalhes'}
                   </>
                 )}
               </Button>
@@ -134,7 +137,7 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Parcela</TableHead>
+                    <TableHead>{promissoria.parcelado ? 'Parcela' : 'Item'}</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
@@ -143,7 +146,9 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
                 <TableBody>
                   {promissoria.parcelas.map((parcela) => (
                     <TableRow key={parcela.numero}>
-                      <TableCell>{parcela.numero}</TableCell>
+                      <TableCell>
+                        {promissoria.parcelado ? parcela.numero : 'Pagamento único'}
+                      </TableCell>
                       <TableCell>R$ {parcela.valor.toFixed(2)}</TableCell>
                       <TableCell>
                         {new Date(parcela.dataVencimento).toLocaleDateString('pt-BR')}
