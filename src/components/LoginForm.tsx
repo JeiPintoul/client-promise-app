@@ -33,6 +33,7 @@ export function LoginForm() {
     // Carregar lista de usuários do localStorage
     const todosUsuarios = JSON.parse(localStorage.getItem('all_users') || '[]');
     setUsuarios(todosUsuarios);
+    setUsuariosFiltrados(todosUsuarios);
   }, []);
 
   useEffect(() => {
@@ -42,9 +43,8 @@ export function LoginForm() {
         user.nome.toLowerCase().includes(formData.nome.toLowerCase())
       );
       setUsuariosFiltrados(filtrados);
-      setMostrarSugestoes(filtrados.length > 0 && formData.nome !== '');
     } else {
-      setMostrarSugestoes(false);
+      setUsuariosFiltrados(usuarios);
     }
   }, [formData.nome, usuarios, isLogin]);
 
@@ -91,6 +91,17 @@ export function LoginForm() {
     setMostrarSugestoes(false);
   };
 
+  const handleFocusNome = () => {
+    if (isLogin && usuarios.length > 0) {
+      setMostrarSugestoes(true);
+    }
+  };
+
+  const handleBlurNome = () => {
+    // Delay para permitir clique nas sugestões
+    setTimeout(() => setMostrarSugestoes(false), 150);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <ThemeToggle />
@@ -110,20 +121,13 @@ export function LoginForm() {
                 type="text"
                 value={formData.nome}
                 onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                onFocus={() => {
-                  if (formData.nome && isLogin) {
-                    setMostrarSugestoes(usuariosFiltrados.length > 0);
-                  }
-                }}
-                onBlur={() => {
-                  // Delay para permitir clique nas sugestões
-                  setTimeout(() => setMostrarSugestoes(false), 150);
-                }}
+                onFocus={handleFocusNome}
+                onBlur={handleBlurNome}
                 required
               />
               
               {/* Lista de sugestões de usuários */}
-              {mostrarSugestoes && (
+              {mostrarSugestoes && usuariosFiltrados.length > 0 && (
                 <div className="absolute z-10 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                   {usuariosFiltrados.map((usuario) => (
                     <div

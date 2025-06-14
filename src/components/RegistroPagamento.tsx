@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +33,7 @@ export function RegistroPagamento({
 }: RegistroPagamentoProps) {
   const [formData, setFormData] = useState({
     valor: valorSugerido.toString(),
-    tipo: '' as Pagamento['tipo'],
+    tipo: 'dinheiro' as Pagamento['tipo'], // Padrão como dinheiro
     dataHora: new Date().toISOString().slice(0, 16),
     observacoes: ''
   });
@@ -73,6 +72,31 @@ export function RegistroPagamento({
     }
 
     return true;
+  };
+
+  // Função para lidar com entrada do teclado numérico
+  const handleNumericInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const isNumeric = /^[0-9]$/.test(e.key);
+    const isDecimal = e.key === '.' || e.key === ',';
+    const isBackspace = e.key === 'Backspace';
+    const isDelete = e.key === 'Delete';
+    const isArrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+    const isTab = e.key === 'Tab';
+
+    if (!(isNumeric || isDecimal || isBackspace || isDelete || isArrow || isTab)) {
+      e.preventDefault();
+    }
+
+    // Converter vírgula em ponto
+    if (e.key === ',') {
+      e.preventDefault();
+      const target = e.target as HTMLInputElement;
+      const start = target.selectionStart || 0;
+      const end = target.selectionEnd || 0;
+      const value = target.value;
+      const newValue = value.slice(0, start) + '.' + value.slice(end);
+      setFormData(prev => ({ ...prev, valor: newValue }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -301,11 +325,12 @@ export function RegistroPagamento({
               <Label htmlFor="valor">Valor *</Label>
               <Input
                 id="valor"
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={formData.valor}
                 onChange={(e) => setFormData(prev => ({ ...prev, valor: e.target.value }))}
+                onKeyDown={handleNumericInput}
+                placeholder="0,00"
                 required
               />
             </div>
@@ -323,10 +348,10 @@ export function RegistroPagamento({
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={TipoPagamento.PIX}>PIX</SelectItem>
-                  <SelectItem value={TipoPagamento.CARTAO}>Cartão</SelectItem>
-                  <SelectItem value={TipoPagamento.DINHEIRO}>Dinheiro</SelectItem>
-                  <SelectItem value={TipoPagamento.CHEQUE}>Cheque</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="cartao">Cartão</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
                 </SelectContent>
               </Select>
             </div>

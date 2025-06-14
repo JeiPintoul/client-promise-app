@@ -2,6 +2,20 @@
 import { Parcela, Pagamento, Promissoria, TipoPagamento } from '../types';
 
 export class ParcelaPaymentSystem {
+  private static calcularStatusParcela(parcela: Parcela): Parcela['status'] {
+    const hoje = new Date().toISOString().split('T')[0];
+    const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+    const valorDevido = parcela.valor - parcela.valorPago;
+    
+    if (valorDevido <= 0) {
+      // Parcela totalmente paga
+      return hoje > vencimento ? 'pago_com_atraso' : 'pago';
+    } else {
+      // Parcela não totalmente paga
+      return hoje > vencimento ? 'atrasado' : 'pendente';
+    }
+  }
+
   static pagarParcela(
     parcela: Parcela,
     valor: number,
@@ -27,9 +41,11 @@ export class ParcelaPaymentSystem {
       valorPago: novoValorPago,
       paga: parcelaPaga,
       pagoComAtraso: pagoComAtraso && parcelaPaga,
-      status: parcelaPaga 
-        ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
-        : (hoje > vencimento ? 'atrasado' : 'pendente')
+      status: this.calcularStatusParcela({
+        ...parcela,
+        valorPago: novoValorPago,
+        paga: parcelaPaga
+      })
     };
 
     const pagamento: Pagamento = {
@@ -249,21 +265,18 @@ export class ParcelaPaymentSystem {
 
     const pagamento = parcela.pagamentos[pagamentoIndex];
     const novoValorPago = Math.max(0, parcela.valorPago - pagamento.valor);
-    const hoje = new Date().toISOString().split('T')[0];
-    const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
-    const pagoComAtraso = hoje > vencimento;
-
     const pagamentosAtualizados = parcela.pagamentos.filter(p => p.id !== pagamentoId);
 
-    return {
+    const parcelaAtualizada = {
       ...parcela,
       valorPago: novoValorPago,
       paga: novoValorPago >= parcela.valor,
-      pagoComAtraso: pagoComAtraso && novoValorPago < parcela.valor,
-      status: novoValorPago >= parcela.valor 
-        ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
-        : (hoje > vencimento ? 'atrasado' : 'pendente'),
       pagamentos: pagamentosAtualizados
     };
+
+    // Recalcular status usando a função centralizada
+    parcelaAtualizada.status = this.calcularStatusParcela(parcelaAtualizada);
+
+    return parcelaAtualizada;
   }
 }

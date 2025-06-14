@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronDown, ChevronUp, ExternalLink, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ConfirmDialog } from './ConfirmDialog';
 import { type Pagamento, type Promissoria, type OrdemPagamento, type FiltroPagamento } from '@/types';
 import { formatarTipoPagamento } from '@/utils/paymentUtils';
 
@@ -55,6 +55,11 @@ export function HistoricoPagamentos({
   const [editandoPagamento, setEditandoPagamento] = useState<string | null>(null);
   const [valorEdicao, setValorEdicao] = useState('');
   const [expandedAcoes, setExpandedAcoes] = useState<Set<string>>(new Set());
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    pagamentoId: string;
+    valor: number;
+  }>({ isOpen: false, pagamentoId: '', valor: 0 });
   
   const { toast } = useToast();
 
@@ -292,14 +297,19 @@ export function HistoricoPagamentos({
     setValorEdicao('');
   };
 
-  const handleExcluirPagamento = (pagamentoId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este pagamento?')) {
-      return;
-    }
+  const confirmarExclusao = (pagamentoId: string, valor: number) => {
+    setConfirmDialog({
+      isOpen: true,
+      pagamentoId,
+      valor
+    });
+  };
 
+  const handleExcluirPagamento = () => {
+    const { pagamentoId } = confirmDialog;
     const novasPromissorias = [...promissorias];
     let pagamentoEncontrado = false;
-    let valorExcluido = 0;
+    let valorExcluido = confirmDialog.valor;
 
     novasPromissorias.forEach(promissoria => {
       // Verificar pagamentos das parcelas
@@ -343,190 +353,203 @@ export function HistoricoPagamentos({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Histórico de Pagamentos</CardTitle>
-        
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <Select value={ordem} onValueChange={(value: OrdemPagamento) => setOrdem(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Ordenar por" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="data_desc">Data (Mais recente)</SelectItem>
-                <SelectItem value="data_asc">Data (Mais antigo)</SelectItem>
-                <SelectItem value="valor_desc">Valor (Maior)</SelectItem>
-                <SelectItem value="valor_asc">Valor (Menor)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Histórico de Pagamentos</CardTitle>
           
-          <div className="flex-1">
-            <Select value={filtro} onValueChange={(value: FiltroPagamento) => setFiltro(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrar por" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="no_tempo">No Prazo</SelectItem>
-                <SelectItem value="atrasados">Atrasados</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <Select value={ordem} onValueChange={(value: OrdemPagamento) => setOrdem(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Ordenar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="data_desc">Data (Mais recente)</SelectItem>
+                  <SelectItem value="data_asc">Data (Mais antigo)</SelectItem>
+                  <SelectItem value="valor_desc">Valor (Maior)</SelectItem>
+                  <SelectItem value="valor_asc">Valor (Menor)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex-1">
+              <Select value={filtro} onValueChange={(value: FiltroPagamento) => setFiltro(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filtrar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="no_tempo">No Prazo</SelectItem>
+                  <SelectItem value="atrasados">Atrasados</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent>
-        {acoesOrdenadas.length === 0 ? (
-          <p className="text-center text-muted-foreground py-4">
-            Nenhum pagamento encontrado.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {acoesOrdenadas.map((acao) => (
-              <div key={acao.id} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="font-semibold">R$ {acao.valorTotal.toFixed(2)}</span>
-                      <Badge variant="outline">{formatarTipoPagamento(acao.tipo)}</Badge>
-                      <Badge variant="secondary">
-                        {acao.pagamentos.length} item{acao.pagamentos.length > 1 ? 's' : ''}
-                      </Badge>
+        </CardHeader>
+        
+        <CardContent>
+          {acoesOrdenadas.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              Nenhum pagamento encontrado.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {acoesOrdenadas.map((acao) => (
+                <div key={acao.id} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="font-semibold">R$ {acao.valorTotal.toFixed(2)}</span>
+                        <Badge variant="outline">{formatarTipoPagamento(acao.tipo)}</Badge>
+                        <Badge variant="secondary">
+                          {acao.pagamentos.length} item{acao.pagamentos.length > 1 ? 's' : ''}
+                        </Badge>
+                      </div>
+                      
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <div><strong>Data:</strong> {new Date(acao.dataHora).toLocaleString('pt-BR')}</div>
+                        <div><strong>Tipo:</strong> {acao.descricao}</div>
+                        {acao.observacoes && (
+                          <div><strong>Observações:</strong> {acao.observacoes}</div>
+                        )}
+                      </div>
                     </div>
                     
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <div><strong>Data:</strong> {new Date(acao.dataHora).toLocaleString('pt-BR')}</div>
-                      <div><strong>Tipo:</strong> {acao.descricao}</div>
-                      {acao.observacoes && (
-                        <div><strong>Observações:</strong> {acao.observacoes}</div>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleExpandedAcao(acao.id)}
+                      >
+                        {expandedAcoes.has(acao.id) ? (
+                          <>
+                            <ChevronUp className="w-4 h-4 mr-1" />
+                            Ocultar Ações
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-1" />
+                            Exibir Ações
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleExpandedAcao(acao.id)}
-                    >
-                      {expandedAcoes.has(acao.id) ? (
-                        <>
-                          <ChevronUp className="w-4 h-4 mr-1" />
-                          Ocultar Ações
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-4 h-4 mr-1" />
-                          Exibir Ações
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
 
-                {/* Detalhes expandidos da ação */}
-                {expandedAcoes.has(acao.id) && (
-                  <div className="mt-4 pt-4 border-t space-y-3">
-                    {acao.pagamentos.map((pagamento) => (
-                      <div key={pagamento.id} className="bg-muted/50 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              {editandoPagamento === pagamento.id ? (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={valorEdicao}
-                                    onChange={(e) => setValorEdicao(e.target.value)}
-                                    className="w-24 px-2 py-1 border rounded"
-                                  />
-                                  <Button size="sm" onClick={() => handleSalvarEdicao(pagamento.id)}>
-                                    Salvar
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => setEditandoPagamento(null)}>
-                                    Cancelar
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="font-medium">R$ {pagamento.valor.toFixed(2)}</span>
-                              )}
-                              <Badge variant={pagamento.origemTipo === 'parcela' ? 'default' : 'secondary'}>
-                                {pagamento.origemTipo === 'parcela' 
-                                  ? `Parcela ${pagamento.parcelaInfo?.numero}` 
-                                  : 'Promissória'
-                                }
-                              </Badge>
-                              {pagamento.editado && (
-                                <Badge variant="destructive">
-                                  Editado {pagamento.historicoEdicoes?.length || 1}x
+                  {/* Detalhes expandidos da ação */}
+                  {expandedAcoes.has(acao.id) && (
+                    <div className="mt-4 pt-4 border-t space-y-3">
+                      {acao.pagamentos.map((pagamento) => (
+                        <div key={pagamento.id} className="bg-muted/50 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                {editandoPagamento === pagamento.id ? (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={valorEdicao}
+                                      onChange={(e) => setValorEdicao(e.target.value)}
+                                      className="w-24 px-2 py-1 border rounded"
+                                    />
+                                    <Button size="sm" onClick={() => handleSalvarEdicao(pagamento.id)}>
+                                      Salvar
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => setEditandoPagamento(null)}>
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <span className="font-medium">R$ {pagamento.valor.toFixed(2)}</span>
+                                )}
+                                <Badge variant={pagamento.origemTipo === 'parcela' ? 'default' : 'secondary'}>
+                                  {pagamento.origemTipo === 'parcela' 
+                                    ? `Parcela ${pagamento.parcelaInfo?.numero}` 
+                                    : 'Promissória'
+                                  }
                                 </Badge>
-                              )}
+                                {pagamento.editado && (
+                                  <Badge variant="destructive">
+                                    Editado {pagamento.historicoEdicoes?.length || 1}x
+                                  </Badge>
+                                )}
+                              </div>
+                              
+                              <div className="text-sm text-muted-foreground">
+                                <div><strong>Descrição:</strong> {pagamento.descricao}</div>
+                              </div>
                             </div>
                             
-                            <div className="text-sm text-muted-foreground">
-                              <div><strong>Descrição:</strong> {pagamento.descricao}</div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditarPagamento(pagamento.id, pagamento.valor)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleExcluirPagamento(pagamento.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                            
-                            {onNavigateToPromissoria && (
+                            <div className="flex items-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  if (pagamento.parcelaInfo && onNavigateToParcela) {
-                                    onNavigateToParcela(pagamento.promissoriaInfo.id, pagamento.parcelaInfo.id);
-                                  } else {
-                                    onNavigateToPromissoria(pagamento.promissoriaInfo.id);
-                                  }
-                                }}
+                                onClick={() => handleEditarPagamento(pagamento.id, pagamento.valor)}
                               >
-                                <ExternalLink className="w-4 h-4" />
+                                <Edit className="w-4 h-4" />
                               </Button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Histórico de edições */}
-                        {pagamento.historicoEdicoes && pagamento.historicoEdicoes.length > 0 && (
-                          <div className="mt-3 pt-3 border-t">
-                            <h5 className="font-medium text-sm mb-2">Histórico de Edições:</h5>
-                            <div className="space-y-1">
-                              {pagamento.historicoEdicoes.map((edicao, index) => (
-                                <div key={index} className="text-xs text-muted-foreground">
-                                  <span className="font-medium">{new Date(edicao.data).toLocaleString('pt-BR')}:</span> {edicao.alteracao}
-                                </div>
-                              ))}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => confirmarExclusao(pagamento.id, pagamento.valor)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                              
+                              {onNavigateToPromissoria && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (pagamento.parcelaInfo && onNavigateToParcela) {
+                                      onNavigateToParcela(pagamento.promissoriaInfo.id, pagamento.parcelaInfo.id);
+                                    } else {
+                                      onNavigateToPromissoria(pagamento.promissoriaInfo.id);
+                                    }
+                                  }}
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+
+                          {/* Histórico de edições */}
+                          {pagamento.historicoEdicoes && pagamento.historicoEdicoes.length > 0 && (
+                            <div className="mt-3 pt-3 border-t">
+                              <h5 className="font-medium text-sm mb-2">Histórico de Edições:</h5>
+                              <div className="space-y-1">
+                                {pagamento.historicoEdicoes.map((edicao, index) => (
+                                  <div key={index} className="text-xs text-muted-foreground">
+                                    <span className="font-medium">{new Date(edicao.data).toLocaleString('pt-BR')}:</span> {edicao.alteracao}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, pagamentoId: '', valor: 0 })}
+        onConfirm={handleExcluirPagamento}
+        title="Confirmar Exclusão"
+        description={`Tem certeza que deseja excluir este pagamento de R$ ${confirmDialog.valor.toFixed(2)}? Esta ação não pode ser desfeita.`}
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        variant="destructive"
+      />
+    </>
   );
 }
