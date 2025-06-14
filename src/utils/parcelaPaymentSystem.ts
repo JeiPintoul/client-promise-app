@@ -19,12 +19,15 @@ export class ParcelaPaymentSystem {
     const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
     const pagoComAtraso = hoje > vencimento;
 
+    // Verificar se a parcela está completamente paga
+    const parcelaPaga = novoValorPago >= parcela.valor;
+
     const parcelaAtualizada: Parcela = {
       ...parcela,
       valorPago: novoValorPago,
-      paga: novoValorPago >= parcela.valor,
-      pagoComAtraso: pagoComAtraso && !parcela.paga,
-      status: novoValorPago >= parcela.valor 
+      paga: parcelaPaga,
+      pagoComAtraso: pagoComAtraso && parcelaPaga,
+      status: parcelaPaga 
         ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
         : (hoje > vencimento ? 'atrasado' : 'pendente')
     };

@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,6 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from './ThemeToggle';
+
+interface Usuario {
+  id: string;
+  nome: string;
+  role: 'gerente' | 'funcionario';
+}
 
 export function LoginForm() {
   const [isLogin, setIsLogin] = useState(true);
@@ -16,9 +22,31 @@ export function LoginForm() {
     confirmPassword: ''
   });
   const [loading, setLoading] = useState(false);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuariosFiltrados, setUsuariosFiltrados] = useState<Usuario[]>([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   
   const { signInWithName, signUpWithName } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Carregar lista de usuários do localStorage
+    const todosUsuarios = JSON.parse(localStorage.getItem('all_users') || '[]');
+    setUsuarios(todosUsuarios);
+  }, []);
+
+  useEffect(() => {
+    // Filtrar usuários conforme o usuário digita
+    if (formData.nome && isLogin) {
+      const filtrados = usuarios.filter(user => 
+        user.nome.toLowerCase().includes(formData.nome.toLowerCase())
+      );
+      setUsuariosFiltrados(filtrados);
+      setMostrarSugestoes(filtrados.length > 0 && formData.nome !== '');
+    } else {
+      setMostrarSugestoes(false);
+    }
+  }, [formData.nome, usuarios, isLogin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +86,11 @@ export function LoginForm() {
     }
   };
 
+  const selecionarUsuario = (nomeUsuario: string) => {
+    setFormData(prev => ({ ...prev, nome: nomeUsuario }));
+    setMostrarSugestoes(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <ThemeToggle />
@@ -70,15 +103,42 @@ export function LoginForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label htmlFor="nome">Nome</Label>
               <Input
                 id="nome"
                 type="text"
                 value={formData.nome}
                 onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
+                onFocus={() => {
+                  if (formData.nome && isLogin) {
+                    setMostrarSugestoes(usuariosFiltrados.length > 0);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay para permitir clique nas sugestões
+                  setTimeout(() => setMostrarSugestoes(false), 150);
+                }}
                 required
               />
+              
+              {/* Lista de sugestões de usuários */}
+              {mostrarSugestoes && (
+                <div className="absolute z-10 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                  {usuariosFiltrados.map((usuario) => (
+                    <div
+                      key={usuario.id}
+                      className="px-3 py-2 hover:bg-accent cursor-pointer flex items-center justify-between"
+                      onClick={() => selecionarUsuario(usuario.nome)}
+                    >
+                      <span>{usuario.nome}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {usuario.role === 'gerente' ? 'Gerente' : 'Funcionário'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -88,7 +148,7 @@ export function LoginForm() {
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                required
+                required={!isLogin || formData.nome === '' || !usuarios.find(u => u.nome === formData.nome && u.role === 'funcionario')}
               />
             </div>
 

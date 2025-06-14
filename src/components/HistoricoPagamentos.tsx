@@ -32,6 +32,16 @@ interface PagamentoDetalhado extends Pagamento {
   };
 }
 
+interface AcaoAgrupada {
+  id: string;
+  dataHora: string;
+  tipo: Pagamento['tipo'];
+  valorTotal: number;
+  observacoes?: string;
+  pagamentos: PagamentoDetalhado[];
+  descricao: string;
+}
+
 export function HistoricoPagamentos({
   promissorias,
   promissoriaId,
@@ -44,6 +54,7 @@ export function HistoricoPagamentos({
   const [filtro, setFiltro] = useState<FiltroPagamento>('todos');
   const [editandoPagamento, setEditandoPagamento] = useState<string | null>(null);
   const [valorEdicao, setValorEdicao] = useState('');
+  const [expandedAcoes, setExpandedAcoes] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
 
@@ -63,9 +74,6 @@ export function HistoricoPagamentos({
           
           if (parcela.pagamentos && parcela.pagamentos.length > 0) {
             parcela.pagamentos.forEach(pagamento => {
-              const dataVencimento = new Date(parcela.dataVencimento);
-              const pagamentoData = new Date(pagamento.dataHora);
-              
               pagamentos.push({
                 ...pagamento,
                 origemTipo: 'parcela',
@@ -90,9 +98,6 @@ export function HistoricoPagamentos({
         promissoria.pagamentos
           .filter(p => !p.parcelaId) // Apenas pagamentos não associados a parcelas específicas
           .forEach(pagamento => {
-            const dataLimite = new Date(promissoria.dataLimite);
-            const pagamentoData = new Date(pagamento.dataHora);
-            
             pagamentos.push({
               ...pagamento,
               origemTipo: 'promissoria',
@@ -107,6 +112,46 @@ export function HistoricoPagamentos({
     });
 
     return pagamentos;
+  };
+
+  /**
+   * Agrupa pagamentos por ação (mesmo tipo, data/hora e observações)
+   */
+  const agruparPagamentosPorAcao = (pagamentos: PagamentoDetalhado[]): AcaoAgrupada[] => {
+    const acoesMap = new Map<string, AcaoAgrupada>();
+
+    pagamentos.forEach(pagamento => {
+      // Chave para agrupamento: tipo + data/hora + observações
+      const chave = `${pagamento.tipo}_${pagamento.dataHora}_${pagamento.observacoes || ''}`;
+      
+      if (acoesMap.has(chave)) {
+        const acao = acoesMap.get(chave)!;
+        acao.pagamentos.push(pagamento);
+        acao.valorTotal += pagamento.valor;
+      } else {
+        // Determinar descrição da ação
+        let descricaoAcao = '';
+        if (pagamento.descricao?.includes('Pagamento geral')) {
+          descricaoAcao = 'Pagamento Geral Distribuído';
+        } else if (pagamento.descricao?.includes('Pagamento da promissória')) {
+          descricaoAcao = 'Pagamento de Promissória';
+        } else {
+          descricaoAcao = 'Pagamento de Parcela Individual';
+        }
+
+        acoesMap.set(chave, {
+          id: chave,
+          dataHora: pagamento.dataHora,
+          tipo: pagamento.tipo,
+          valorTotal: pagamento.valor,
+          observacoes: pagamento.observacoes,
+          pagamentos: [pagamento],
+          descricao: descricaoAcao
+        });
+      }
+    });
+
+    return Array.from(acoesMap.values());
   };
 
   const pagamentosDetalhados = extrairPagamentosDetalhados();
@@ -124,21 +169,34 @@ export function HistoricoPagamentos({
     return true;
   });
 
+  // Agrupar por ações
+  const acoesAgrupadas = agruparPagamentosPorAcao(pagamentosFiltrados);
+
   // Aplicar ordenação
-  const pagamentosOrdenados = [...pagamentosFiltrados].sort((a, b) => {
+  const acoesOrdenadas = [...acoesAgrupadas].sort((a, b) => {
     switch (ordem) {
       case 'data_asc':
         return new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime();
       case 'data_desc':
         return new Date(b.dataHora).getTime() - new Date(a.dataHora).getTime();
       case 'valor_asc':
-        return a.valor - b.valor;
+        return a.valorTotal - b.valorTotal;
       case 'valor_desc':
-        return b.valor - a.valor;
+        return b.valorTotal - a.valorTotal;
       default:
         return 0;
     }
   });
+
+  const toggleExpandedAcao = (acaoId: string) => {
+    const newExpanded = new Set(expandedAcoes);
+    if (newExpanded.has(acaoId)) {
+      newExpanded.delete(acaoId);
+    } else {
+      newExpanded.add(acaoId);
+    }
+    setExpandedAcoes(newExpanded);
+  };
 
   const handleEditarPagamento = (pagamentoId: string, valorAtual: number) => {
     setEditandoPagamento(pagamentoId);
@@ -320,106 +378,148 @@ export function HistoricoPagamentos({
       </CardHeader>
       
       <CardContent>
-        {pagamentosOrdenados.length === 0 ? (
+        {acoesOrdenadas.length === 0 ? (
           <p className="text-center text-muted-foreground py-4">
             Nenhum pagamento encontrado.
           </p>
         ) : (
           <div className="space-y-3">
-            {pagamentosOrdenados.map((pagamento) => (
-              <div key={pagamento.id} className="border rounded-lg p-4">
+            {acoesOrdenadas.map((acao) => (
+              <div key={acao.id} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      {editandoPagamento === pagamento.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={valorEdicao}
-                            onChange={(e) => setValorEdicao(e.target.value)}
-                            className="w-24 px-2 py-1 border rounded"
-                          />
-                          <Button size="sm" onClick={() => handleSalvarEdicao(pagamento.id)}>
-                            Salvar
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditandoPagamento(null)}>
-                            Cancelar
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="font-semibold">R$ {pagamento.valor.toFixed(2)}</span>
-                      )}
-                      <Badge variant="outline">{formatarTipoPagamento(pagamento.tipo)}</Badge>
-                      <Badge variant={pagamento.origemTipo === 'parcela' ? 'default' : 'secondary'}>
-                        {pagamento.origemTipo === 'parcela' 
-                          ? `Parcela ${pagamento.parcelaInfo?.numero}` 
-                          : 'Promissória'
-                        }
+                      <span className="font-semibold">R$ {acao.valorTotal.toFixed(2)}</span>
+                      <Badge variant="outline">{formatarTipoPagamento(acao.tipo)}</Badge>
+                      <Badge variant="secondary">
+                        {acao.pagamentos.length} item{acao.pagamentos.length > 1 ? 's' : ''}
                       </Badge>
-                      {pagamento.editado && (
-                        <Badge variant="destructive">
-                          Editado {pagamento.historicoEdicoes?.length || 1}x
-                        </Badge>
-                      )}
                     </div>
                     
                     <div className="text-sm text-muted-foreground space-y-1">
-                      <div><strong>Data:</strong> {new Date(pagamento.dataHora).toLocaleString('pt-BR')}</div>
-                      <div><strong>Descrição:</strong> {pagamento.descricao}</div>
-                      {pagamento.observacoes && (
-                        <div><strong>Observações:</strong> {pagamento.observacoes}</div>
+                      <div><strong>Data:</strong> {new Date(acao.dataHora).toLocaleString('pt-BR')}</div>
+                      <div><strong>Tipo:</strong> {acao.descricao}</div>
+                      {acao.observacoes && (
+                        <div><strong>Observações:</strong> {acao.observacoes}</div>
                       )}
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    {/* Botões de ação */}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleEditarPagamento(pagamento.id, pagamento.valor)}
+                      onClick={() => toggleExpandedAcao(acao.id)}
                     >
-                      <Edit className="w-4 h-4" />
+                      {expandedAcoes.has(acao.id) ? (
+                        <>
+                          <ChevronUp className="w-4 h-4 mr-1" />
+                          Ocultar Ações
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4 mr-1" />
+                          Exibir Ações
+                        </>
+                      )}
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleExcluirPagamento(pagamento.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                    
-                    {/* Botão de navegação */}
-                    {onNavigateToPromissoria && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (pagamento.parcelaInfo && onNavigateToParcela) {
-                            onNavigateToParcela(pagamento.promissoriaInfo.id, pagamento.parcelaInfo.id);
-                          } else {
-                            onNavigateToPromissoria(pagamento.promissoriaInfo.id);
-                          }
-                        }}
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                    )}
                   </div>
                 </div>
 
-                {/* Histórico de edições */}
-                {pagamento.historicoEdicoes && pagamento.historicoEdicoes.length > 0 && (
-                  <div className="mt-3 pt-3 border-t">
-                    <h5 className="font-medium text-sm mb-2">Histórico de Edições:</h5>
-                    <div className="space-y-1">
-                      {pagamento.historicoEdicoes.map((edicao, index) => (
-                        <div key={index} className="text-xs text-muted-foreground">
-                          <span className="font-medium">{new Date(edicao.data).toLocaleString('pt-BR')}:</span> {edicao.alteracao}
+                {/* Detalhes expandidos da ação */}
+                {expandedAcoes.has(acao.id) && (
+                  <div className="mt-4 pt-4 border-t space-y-3">
+                    {acao.pagamentos.map((pagamento) => (
+                      <div key={pagamento.id} className="bg-muted/50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              {editandoPagamento === pagamento.id ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={valorEdicao}
+                                    onChange={(e) => setValorEdicao(e.target.value)}
+                                    className="w-24 px-2 py-1 border rounded"
+                                  />
+                                  <Button size="sm" onClick={() => handleSalvarEdicao(pagamento.id)}>
+                                    Salvar
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setEditandoPagamento(null)}>
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="font-medium">R$ {pagamento.valor.toFixed(2)}</span>
+                              )}
+                              <Badge variant={pagamento.origemTipo === 'parcela' ? 'default' : 'secondary'}>
+                                {pagamento.origemTipo === 'parcela' 
+                                  ? `Parcela ${pagamento.parcelaInfo?.numero}` 
+                                  : 'Promissória'
+                                }
+                              </Badge>
+                              {pagamento.editado && (
+                                <Badge variant="destructive">
+                                  Editado {pagamento.historicoEdicoes?.length || 1}x
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            <div className="text-sm text-muted-foreground">
+                              <div><strong>Descrição:</strong> {pagamento.descricao}</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditarPagamento(pagamento.id, pagamento.valor)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleExcluirPagamento(pagamento.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                            
+                            {onNavigateToPromissoria && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (pagamento.parcelaInfo && onNavigateToParcela) {
+                                    onNavigateToParcela(pagamento.promissoriaInfo.id, pagamento.parcelaInfo.id);
+                                  } else {
+                                    onNavigateToPromissoria(pagamento.promissoriaInfo.id);
+                                  }
+                                }}
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      ))}
-                    </div>
+
+                        {/* Histórico de edições */}
+                        {pagamento.historicoEdicoes && pagamento.historicoEdicoes.length > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <h5 className="font-medium text-sm mb-2">Histórico de Edições:</h5>
+                            <div className="space-y-1">
+                              {pagamento.historicoEdicoes.map((edicao, index) => (
+                                <div key={index} className="text-xs text-muted-foreground">
+                                  <span className="font-medium">{new Date(edicao.data).toLocaleString('pt-BR')}:</span> {edicao.alteracao}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

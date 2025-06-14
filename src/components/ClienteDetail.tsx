@@ -13,10 +13,11 @@ import { EditarPromissoria } from './EditarPromissoria';
 import { CadastroPromissoria } from './CadastroPromissoria';
 import { RegistroPagamento } from './RegistroPagamento';
 import { HistoricoPagamentos } from './HistoricoPagamentos';
+import { DetalhePagamentoParcela } from './DetalhePagamentoParcela';
 import { type Cliente, type Promissoria } from '@/types';
 import { calcularEstatisticasCliente, calcularStatusPromissoria, formatarStatus } from '@/utils/paymentUtils';
 
-type ViewState = 'detail' | 'editar-promissoria' | 'registrar-pagamento' | 'historico-pagamentos';
+type ViewState = 'detail' | 'editar-promissoria' | 'registrar-pagamento' | 'historico-pagamentos' | 'detalhe-pagamento-parcela';
 
 interface ClienteDetailProps {
   cliente: Cliente;
@@ -31,6 +32,7 @@ interface ClienteDetailProps {
 export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps) {
   const [promissorias, setPromissorias] = useState<Promissoria[]>([]);
   const [selectedPromissoria, setSelectedPromissoria] = useState<Promissoria | null>(null);
+  const [selectedParcela, setSelectedParcela] = useState<any>(null);
   const [viewState, setViewState] = useState<ViewState>('detail');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -161,6 +163,29 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
     setViewState('registrar-pagamento');
   };
 
+  const handleVerPagamentosParcela = (parcelaId: string) => {
+    // Encontrar a promissória e parcela
+    let promissoriaEncontrada: Promissoria | null = null;
+    let parcelaEncontrada: any = null;
+
+    for (const promissoria of promissorias) {
+      if (promissoria.parcelas) {
+        const parcela = promissoria.parcelas.find(p => p.id === parcelaId);
+        if (parcela) {
+          promissoriaEncontrada = promissoria;
+          parcelaEncontrada = parcela;
+          break;
+        }
+      }
+    }
+
+    if (promissoriaEncontrada && parcelaEncontrada) {
+      setSelectedPromissoria(promissoriaEncontrada);
+      setSelectedParcela(parcelaEncontrada);
+      setViewState('detalhe-pagamento-parcela');
+    }
+  };
+
   const handlePagamentoRegistrado = (promissoriasAtualizadas: Promissoria[]) => {
     // Atualizar no localStorage
     const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
@@ -178,6 +203,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
   const handleBackToDetail = () => {
     setViewState('detail');
     setSelectedPromissoria(null);
+    setSelectedParcela(null);
     fetchPromissorias();
   };
 
@@ -239,6 +265,17 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
         </div>
         <HistoricoPagamentos promissorias={promissorias} />
       </div>
+    );
+  }
+
+  if (viewState === 'detalhe-pagamento-parcela' && selectedPromissoria && selectedParcela) {
+    return (
+      <DetalhePagamentoParcela
+        parcela={selectedParcela}
+        promissoria={selectedPromissoria}
+        onBack={handleBackToDetail}
+        onPagamentoAtualizado={handlePagamentoRegistrado}
+      />
     );
   }
 
@@ -546,6 +583,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                       onPagarParcela={(parcelaId, valorSugerido) => 
                         handleRegistrarPagamento('parcela', promissoria.id, parcelaId, valorSugerido)
                       }
+                      onVerPagamentos={handleVerPagamentosParcela}
                     />
                   )}
                 </div>

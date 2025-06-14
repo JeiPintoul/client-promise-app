@@ -2,156 +2,117 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, CreditCard } from 'lucide-react';
-import { type Parcela, type Promissoria } from '@/types';
-import { formatarStatus, calcularStatusParcela } from '@/utils/paymentUtils';
+import { ChevronDown, ChevronUp, CreditCard, Eye } from 'lucide-react';
+import { type Promissoria, type Parcela } from '@/types';
+import { formatarStatus } from '@/utils/paymentUtils';
 
 interface ListaParcelasProps {
   promissoria: Promissoria;
   onPagarParcela: (parcelaId: string, valorSugerido: number) => void;
+  onVerPagamentos?: (parcelaId: string) => void;
 }
 
-/**
- * Componente que exibe as parcelas de uma promissória de forma expansível
- * Permite visualizar status, valores e registrar pagamentos individuais
- */
-export function ListaParcelas({ promissoria, onPagarParcela }: ListaParcelasProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export function ListaParcelas({ promissoria, onPagarParcela, onVerPagamentos }: ListaParcelasProps) {
+  const [expanded, setExpanded] = useState(false);
 
-  if (!promissoria.parcelado || !promissoria.parcelas) {
+  if (!promissoria.parcelas || promissoria.parcelas.length === 0) {
     return null;
   }
 
-  const getBadgeVariant = (parcela: Parcela) => {
-    const status = calcularStatusParcela(parcela);
-    
-    switch (status) {
-      case 'pago':
-        return 'default' as const;
-      case 'pago_com_atraso':
-        return 'secondary' as const;
-      case 'atrasado':
-        return 'destructive' as const;
-      default:
-        return 'outline' as const;
-    }
+  const getStatusBadge = (parcela: Parcela) => {
+    const variants = {
+      pendente: 'outline' as const,
+      pago: 'default' as const,
+      atrasado: 'destructive' as const,
+      pago_com_atraso: 'secondary' as const
+    };
+
+    return (
+      <Badge variant={variants[parcela.status]}>
+        {formatarStatus(parcela.status)}
+      </Badge>
+    );
   };
 
-  const getStatusColor = (parcela: Parcela) => {
-    const status = calcularStatusParcela(parcela);
-    
-    switch (status) {
-      case 'pago':
-        return 'text-green-600';
-      case 'pago_com_atraso':
-        return 'text-orange-600';
-      case 'atrasado':
-        return 'text-red-600';
-      default:
-        return 'text-yellow-600';
-    }
-  };
+  const hoje = new Date().toISOString().split('T')[0];
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="outline" className="w-full justify-between">
-          <span>
-            {isOpen ? 'Ocultar' : 'Exibir'} Parcelas ({promissoria.parcelas.length})
-          </span>
-          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
-      </CollapsibleTrigger>
-      
-      <CollapsibleContent className="mt-4">
-        <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Parcela</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Valor Pago</TableHead>
-                <TableHead>Restante</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {promissoria.parcelas.map((parcela) => {
-                const valorRestante = parcela.valor - (parcela.valorPago || 0);
-                const status = calcularStatusParcela(parcela);
-                
-                return (
-                  <TableRow key={parcela.id}>
-                    <TableCell className="font-medium">{parcela.numero}</TableCell>
-                    <TableCell>R$ {parcela.valor.toFixed(2)}</TableCell>
-                    <TableCell className="text-green-600">
-                      R$ {(parcela.valorPago || 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell className={valorRestante > 0 ? 'text-red-600' : 'text-green-600'}>
-                      R$ {valorRestante.toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(parcela.dataVencimento).toLocaleDateString('pt-BR')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getBadgeVariant(parcela)}>
-                        {formatarStatus(status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {!parcela.paga && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onPagarParcela(parcela.id, valorRestante)}
-                        >
-                          <CreditCard className="w-4 h-4 mr-1" />
-                          Pagar
-                        </Button>
+    <div className="border-t pt-4">
+      <Button
+        variant="ghost"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full justify-between p-2"
+      >
+        <span>
+          {expanded ? 'Ocultar' : 'Exibir'} Parcelas ({promissoria.parcelas.length})
+        </span>
+        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </Button>
+
+      {expanded && (
+        <div className="mt-4 space-y-3">
+          {promissoria.parcelas.map((parcela) => {
+            const valorDevido = parcela.valor - (parcela.valorPago || 0);
+            const temPagamentos = parcela.pagamentos && parcela.pagamentos.length > 0;
+            const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+            const atrasada = hoje > vencimento && !parcela.paga;
+
+            return (
+              <div key={parcela.id} className="border rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="font-medium">Parcela {parcela.numero}</span>
+                      {getStatusBadge(parcela)}
+                      {atrasada && (
+                        <Badge variant="destructive">Atrasada</Badge>
                       )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm text-muted-foreground">
+                      <div>
+                        <strong>Valor:</strong> R$ {parcela.valor.toFixed(2)}
+                      </div>
+                      <div>
+                        <strong>Pago:</strong> <span className="text-green-600 dark:text-green-400">R$ {(parcela.valorPago || 0).toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <strong>Restante:</strong> <span className="text-red-600 dark:text-red-400">R$ {valorDevido.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <strong>Vencimento:</strong> {new Date(parcela.dataVencimento).toLocaleDateString('pt-BR')}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    {temPagamentos && onVerPagamentos && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onVerPagamentos(parcela.id)}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        Ver Pagamentos
+                      </Button>
+                    )}
+                    {valorDevido > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onPagarParcela(parcela.id, valorDevido)}
+                      >
+                        <CreditCard className="w-4 h-4 mr-1" />
+                        Pagar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        
-        {/* Resumo das parcelas */}
-        <div className="mt-4 p-4 bg-muted rounded-lg">
-          <h4 className="font-semibold mb-2">Resumo das Parcelas</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Total:</span>
-              <div className="font-medium">
-                {promissoria.parcelas.filter(p => p.paga).length} / {promissoria.parcelas.length}
-              </div>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Pendentes:</span>
-              <div className="font-medium text-yellow-600">
-                {promissoria.parcelas.filter(p => !p.paga && new Date(p.dataVencimento) >= new Date()).length}
-              </div>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Atrasadas:</span>
-              <div className="font-medium text-red-600">
-                {promissoria.parcelas.filter(p => !p.paga && new Date(p.dataVencimento) < new Date()).length}
-              </div>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Pagas:</span>
-              <div className="font-medium text-green-600">
-                {promissoria.parcelas.filter(p => p.paga).length}
-              </div>
-            </div>
-          </div>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      )}
+    </div>
   );
 }
