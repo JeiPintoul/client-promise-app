@@ -1,262 +1,249 @@
 
-import { Parcela, Pagamento, Promissoria } from '@/types';
+import { Parcela, Pagamento, Promissoria, TipoPagamento } from '../types';
 
-/**
- * Sistema centralizado de pagamento de parcelas - Base para todo o sistema
- */
 export class ParcelaPaymentSystem {
-  /**
-   * Método principal: pagar uma parcela específica
-   * Todas as outras operações de pagamento derivam deste método
-   */
   static pagarParcela(
     parcela: Parcela,
     valor: number,
-    dadosPagamento: Omit<Pagamento, 'id' | 'valor' | 'promissoriaId' | 'parcelaId' | 'descricao' | 'created_at'>
-  ): { parcelaAtualizada: Parcela; pagamentoCriado: Pagamento } {
-    const valorAnterior = parcela.valorPago || 0;
-    const valorRestante = parcela.valor - valorAnterior;
-    const valorEfetivo = Math.min(valor, valorRestante);
-    
-    if (valorEfetivo <= 0) {
-      throw new Error('Parcela já está totalmente paga');
-    }
+    tipo: keyof typeof TipoPagamento,
+    observacoes?: string
+  ): { parcelaAtualizada: Parcela; pagamento: Pagamento } {
+    const valorPago = Math.min(valor, parcela.valor - parcela.valorPago);
+    const novoValorPago = parcela.valorPago + valorPago;
+    const agora = new Date().toISOString();
+    const hoje = new Date().toISOString().split('T')[0];
+    const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+    const pagoComAtraso = hoje > vencimento;
 
-    // Criar o pagamento
-    const novoPagamento: Pagamento = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      valor: valorEfetivo,
-      ...dadosPagamento,
-      parcelaId: parcela.id,
-      descricao: `Parcela ${parcela.numero} | Anterior: R$ ${valorAnterior.toFixed(2)} → Atual: R$ ${(valorAnterior + valorEfetivo).toFixed(2)} | Restante: R$ ${(valorRestante - valorEfetivo).toFixed(2)}`,
-      created_at: new Date().toISOString()
-    };
-
-    // Atualizar a parcela
     const parcelaAtualizada: Parcela = {
       ...parcela,
-      valorPago: valorAnterior + valorEfetivo,
-      pagamentos: [...(parcela.pagamentos || []), novoPagamento]
+      valorPago: novoValorPago,
+      paga: novoValorPago >= parcela.valor,
+      pagoComAtraso: pagoComAtraso && !parcela.paga,
+      status: novoValorPago >= parcela.valor 
+        ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
+        : (hoje > vencimento ? 'atrasado' : 'pendente')
     };
 
-    // Verificar se foi pago com atraso
-    const hoje = new Date();
-    const vencimento = new Date(parcela.dataVencimento);
-    
-    if (parcelaAtualizada.valorPago >= parcela.valor) {
-      parcelaAtualizada.paga = true;
-      parcelaAtualizada.pagoComAtraso = vencimento < hoje;
-    }
+    const pagamento: Pagamento = {
+      id: crypto.randomUUID(),
+      valor: valorPago,
+      tipo,
+      dataHora: agora,
+      parcelaId: parcela.id,
+      observacoes,
+      descricao: `Pagamento de parcela ${parcela.numero} - R$ ${valorPago.toFixed(2)} (${tipo})`,
+      created_at: agora
+    };
 
-    // Atualizar status
-    parcelaAtualizada.status = this.calcularStatusParcela(parcelaAtualizada);
+    parcelaAtualizada.pagamentos = [...(parcelaAtualizada.pagamentos || []), pagamento];
 
-    return { parcelaAtualizada, pagamentoCriado: novoPagamento };
+    return { parcelaAtualizada, pagamento };
   }
 
-  /**
-   * Pagar uma promissória inteira distribuindo entre suas parcelas
-   */
   static pagarPromissoria(
     promissoria: Promissoria,
     valor: number,
-    dadosPagamento: Omit<Pagamento, 'id' | 'valor' | 'promissoriaId' | 'parcelaId' | 'descricao' | 'created_at'>
-  ): { promissoriaAtualizada: Promissoria; pagamentosGerados: Pagamento[] } {
-    if (!promissoria.parcelado || !promissoria.parcelas) {
-      throw new Error('Promissória deve ser parcelada para usar este método');
+    tipo: keyof typeof TipoPagamento,
+    observacoes?: string
+  ): { promissoriaAtualizada: Promissoria; pagamentosRealizados: Pagamento[] } {
+    if (!promissoria.parcelas || promissoria.parcelas.length === 0) {
+      throw new Error('Promissória não possui parcelas para pagamento');
     }
 
     let valorRestante = valor;
-    const pagamentosGerados: Pagamento[] = [];
     const parcelasAtualizadas = [...promissoria.parcelas];
+    const pagamentosRealizados: Pagamento[] = [];
 
-    // Ordenar parcelas por vencimento (mais próximas primeiro)
+    // Ordena parcelas por data de vencimento (mais antigas primeiro)
     const parcelasOrdenadas = parcelasAtualizadas
       .map((parcela, index) => ({ parcela, index }))
+      .filter(({ parcela }) => parcela.valorPago < parcela.valor)
       .sort((a, b) => new Date(a.parcela.dataVencimento).getTime() - new Date(b.parcela.dataVencimento).getTime());
 
-    // Distribuir valor entre as parcelas
     for (const { parcela, index } of parcelasOrdenadas) {
       if (valorRestante <= 0) break;
 
-      const valorDevidoParcela = parcela.valor - (parcela.valorPago || 0);
-      if (valorDevidoParcela <= 0) continue;
-
-      const valorParaParcela = Math.min(valorRestante, valorDevidoParcela);
-
-      try {
-        const resultado = this.pagarParcela(parcela, valorParaParcela, {
-          ...dadosPagamento,
-          promissoriaId: promissoria.id
-        });
-
+      const valorParaParcela = Math.min(valorRestante, parcela.valor - parcela.valorPago);
+      if (valorParaParcela > 0) {
+        const resultado = this.pagarParcela(parcela, valorParaParcela, tipo, observacoes);
         parcelasAtualizadas[index] = resultado.parcelaAtualizada;
-        pagamentosGerados.push(resultado.pagamentoCriado);
+        
+        // Atualizar a descrição do pagamento para incluir informações da promissória
+        const pagamentoAtualizado = {
+          ...resultado.pagamento,
+          descricao: `Pagamento da promissória - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${tipo})`
+        };
+        
+        pagamentosRealizados.push(pagamentoAtualizado);
         valorRestante -= valorParaParcela;
-      } catch (error) {
-        // Parcela já paga, continuar para a próxima
-        continue;
       }
     }
 
-    // Criar pagamento principal da promissória (para referência)
-    const valorPagoTotal = valor - valorRestante;
-    const valorAnteriorPromissoria = promissoria.valorPago || 0;
-    
-    const pagamentoPrincipal: Pagamento = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9) + '-principal',
-      valor: valorPagoTotal,
-      ...dadosPagamento,
-      promissoriaId: promissoria.id,
-      descricao: `Pagamento distribuído entre ${pagamentosGerados.length} parcela(s) | Anterior: R$ ${valorAnteriorPromissoria.toFixed(2)} → Atual: R$ ${(valorAnteriorPromissoria + valorPagoTotal).toFixed(2)} | Restante: R$ ${(promissoria.valor - valorAnteriorPromissoria - valorPagoTotal).toFixed(2)}`,
-      created_at: new Date().toISOString()
-    };
-
+    const valorTotalPago = promissoria.valorPago + (valor - valorRestante);
     const promissoriaAtualizada: Promissoria = {
       ...promissoria,
       parcelas: parcelasAtualizadas,
-      valorPago: parcelasAtualizadas.reduce((acc, p) => acc + (p.valorPago || 0), 0),
-      pagamentos: [...(promissoria.pagamentos || []), pagamentoPrincipal],
-      updated_at: new Date().toISOString()
+      valorPago: valorTotalPago,
+      status: valorTotalPago >= promissoria.valor ? 'pago' : 'pendente'
     };
 
-    // Atualizar status da promissória
-    promissoriaAtualizada.status = this.calcularStatusPromissoria(promissoriaAtualizada);
-
-    return { 
-      promissoriaAtualizada, 
-      pagamentosGerados: [pagamentoPrincipal, ...pagamentosGerados] 
-    };
+    return { promissoriaAtualizada, pagamentosRealizados };
   }
 
-  /**
-   * Distribuir pagamento automático entre múltiplas promissórias
-   */
-  static distribuirPagamentoAutomatico(
-    valor: number,
+  static pagarCliente(
     promissorias: Promissoria[],
-    dadosPagamento: Omit<Pagamento, 'id' | 'valor' | 'promissoriaId' | 'parcelaId' | 'descricao' | 'created_at'>
-  ): { promissoriasAtualizadas: Promissoria[]; pagamentosGerados: Pagamento[] } {
+    valor: number,
+    tipo: keyof typeof TipoPagamento,
+    observacoes?: string
+  ): { promissoriasAtualizadas: Promissoria[]; pagamentosRealizados: Pagamento[] } {
     let valorRestante = valor;
-    const promissoriasAtualizadas: Promissoria[] = [];
-    const pagamentosGerados: Pagamento[] = [];
+    const promissoriasAtualizadas = [...promissorias];
+    const pagamentosRealizados: Pagamento[] = [];
 
-    // Coletar todas as parcelas de todas as promissórias com seus devidos
-    const parcelasComInfo = promissorias.flatMap(promissoria => 
-      (promissoria.parcelas || []).map(parcela => ({
-        parcela,
-        promissoria,
-        valorDevido: parcela.valor - (parcela.valorPago || 0)
-      }))
-    ).filter(item => item.valorDevido > 0);
+    // Coleta todas as parcelas em atraso de todas as promissórias
+    const parcelasEmAtraso: Array<{ parcela: Parcela; promissoriaIndex: number; parcelaIndex: number }> = [];
+    const parcelasNormais: Array<{ parcela: Parcela; promissoriaIndex: number; parcelaIndex: number }> = [];
 
-    // Ordenar por prioridade: atrasadas primeiro, depois por vencimento
-    parcelasComInfo.sort((a, b) => {
-      const hoje = new Date();
-      const vencimentoA = new Date(a.parcela.dataVencimento);
-      const vencimentoB = new Date(b.parcela.dataVencimento);
-      
-      const atrasadaA = vencimentoA < hoje;
-      const atrasadaB = vencimentoB < hoje;
-      
-      if (atrasadaA && !atrasadaB) return -1;
-      if (!atrasadaA && atrasadaB) return 1;
-      
-      return vencimentoA.getTime() - vencimentoB.getTime();
+    promissoriasAtualizadas.forEach((promissoria, promIndex) => {
+      if (promissoria.parcelas) {
+        promissoria.parcelas.forEach((parcela, parcIndex) => {
+          if (parcela.valorPago < parcela.valor) {
+            const hoje = new Date().toISOString().split('T')[0];
+            const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+            
+            if (hoje > vencimento) {
+              parcelasEmAtraso.push({ parcela, promissoriaIndex: promIndex, parcelaIndex: parcIndex });
+            } else {
+              parcelasNormais.push({ parcela, promissoriaIndex: promIndex, parcelaIndex: parcIndex });
+            }
+          }
+        });
+      }
     });
 
-    // Agrupar por promissória para rastrear atualizações
-    const promissoriaMap = new Map<string, Promissoria>();
-    promissorias.forEach(p => promissoriaMap.set(p.id, { ...p }));
+    // Ordena parcelas em atraso por data de vencimento (mais antigas primeiro)
+    parcelasEmAtraso.sort((a, b) => 
+      new Date(a.parcela.dataVencimento).getTime() - new Date(b.parcela.dataVencimento).getTime()
+    );
 
-    // Distribuir valor entre as parcelas
-    for (const { parcela, promissoria } of parcelasComInfo) {
+    // Ordena parcelas normais por data de vencimento
+    parcelasNormais.sort((a, b) => 
+      new Date(a.parcela.dataVencimento).getTime() - new Date(b.parcela.dataVencimento).getTime()
+    );
+
+    // Processa primeiro as parcelas em atraso, depois as normais
+    const todasParcelas = [...parcelasEmAtraso, ...parcelasNormais];
+
+    for (const { parcela, promissoriaIndex, parcelaIndex } of todasParcelas) {
       if (valorRestante <= 0) break;
 
-      const promissoriaAtual = promissoriaMap.get(promissoria.id)!;
-      const parcelaAtual = promissoriaAtual.parcelas?.find(p => p.id === parcela.id);
-      
-      if (!parcelaAtual) continue;
-
-      const valorDevido = parcelaAtual.valor - (parcelaAtual.valorPago || 0);
-      if (valorDevido <= 0) continue;
-
-      const valorParaParcela = Math.min(valorRestante, valorDevido);
-
-      try {
-        const resultado = this.pagarParcela(parcelaAtual, valorParaParcela, {
-          ...dadosPagamento,
-          promissoriaId: promissoria.id
-        });
-
-        // Atualizar a parcela na promissória
-        const parcelaIndex = promissoriaAtual.parcelas!.findIndex(p => p.id === parcela.id);
-        promissoriaAtual.parcelas![parcelaIndex] = resultado.parcelaAtualizada;
+      const valorParaParcela = Math.min(valorRestante, parcela.valor - parcela.valorPago);
+      if (valorParaParcela > 0) {
+        const resultado = this.pagarParcela(parcela, valorParaParcela, tipo, observacoes);
+        promissoriasAtualizadas[promissoriaIndex].parcelas![parcelaIndex] = resultado.parcelaAtualizada;
         
-        // Recalcular valor pago da promissória
-        promissoriaAtual.valorPago = promissoriaAtual.parcelas!.reduce((acc, p) => acc + (p.valorPago || 0), 0);
-        promissoriaAtual.updated_at = new Date().toISOString();
-        promissoriaAtual.status = this.calcularStatusPromissoria(promissoriaAtual);
-
-        pagamentosGerados.push(resultado.pagamentoCriado);
+        // Atualizar a descrição do pagamento para incluir informações do cliente
+        const pagamentoAtualizado = {
+          ...resultado.pagamento,
+          descricao: `Pagamento geral - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${tipo})`
+        };
+        
+        pagamentosRealizados.push(pagamentoAtualizado);
         valorRestante -= valorParaParcela;
-      } catch (error) {
-        continue;
+
+        // Atualizar o valor pago da promissória
+        const promissoria = promissoriasAtualizadas[promissoriaIndex];
+        const novoValorPago = promissoria.valorPago + valorParaParcela;
+        promissoriasAtualizadas[promissoriaIndex] = {
+          ...promissoria,
+          valorPago: novoValorPago,
+          status: novoValorPago >= promissoria.valor ? 'pago' : 'pendente'
+        };
       }
     }
 
-    // Coletar promissórias que foram atualizadas
-    promissoriaMap.forEach(promissoria => {
-      const original = promissorias.find(p => p.id === promissoria.id);
-      if (original && promissoria.valorPago !== original.valorPago) {
-        promissoriasAtualizadas.push(promissoria);
-      }
-    });
-
-    return { promissoriasAtualizadas, pagamentosGerados };
+    return { promissoriasAtualizadas, pagamentosRealizados };
   }
 
-  /**
-   * Calcular status de uma parcela
-   */
-  private static calcularStatusParcela(parcela: Parcela): Parcela['status'] {
-    const hoje = new Date();
-    const vencimento = new Date(parcela.dataVencimento);
-    
-    if (parcela.paga) {
-      return parcela.pagoComAtraso ? 'pago_com_atraso' : 'pago';
+  static editarPagamento(
+    parcela: Parcela,
+    pagamentoId: string,
+    novoValor: number,
+    novoTipo: keyof typeof TipoPagamento,
+    novasObservacoes?: string
+  ): { parcelaAtualizada: Parcela; historicoEdicao: any } {
+    const pagamentoIndex = parcela.pagamentos.findIndex(p => p.id === pagamentoId);
+    if (pagamentoIndex === -1) {
+      throw new Error('Pagamento não encontrado');
     }
+
+    const pagamentoAntigo = parcela.pagamentos[pagamentoIndex];
+    const diferenca = novoValor - pagamentoAntigo.valor;
     
-    return vencimento < hoje ? 'atrasado' : 'pendente';
+    const novoValorPagoParcela = parcela.valorPago + diferenca;
+    const agora = new Date().toISOString();
+    const hoje = new Date().toISOString().split('T')[0];
+    const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+    const pagoComAtraso = hoje > vencimento;
+
+    const historicoEdicao = {
+      data: agora,
+      alteracao: `Valor alterado de R$ ${pagamentoAntigo.valor.toFixed(2)} para R$ ${novoValor.toFixed(2)}`,
+      valorAnterior: pagamentoAntigo.valor,
+      valorNovo: novoValor,
+      usuario: 'Sistema'
+    };
+
+    const pagamentoAtualizado: Pagamento = {
+      ...pagamentoAntigo,
+      valor: novoValor,
+      tipo: novoTipo,
+      observacoes: novasObservacoes,
+      editado: true,
+      historicoEdicoes: [...(pagamentoAntigo.historicoEdicoes || []), historicoEdicao]
+    };
+
+    const pagamentosAtualizados = [...parcela.pagamentos];
+    pagamentosAtualizados[pagamentoIndex] = pagamentoAtualizado;
+
+    const parcelaAtualizada: Parcela = {
+      ...parcela,
+      valorPago: Math.max(0, novoValorPagoParcela),
+      paga: novoValorPagoParcela >= parcela.valor,
+      pagoComAtraso: pagoComAtraso && !parcela.paga,
+      status: novoValorPagoParcela >= parcela.valor 
+        ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
+        : (hoje > vencimento ? 'atrasado' : 'pendente'),
+      pagamentos: pagamentosAtualizados
+    };
+
+    return { parcelaAtualizada, historicoEdicao };
   }
 
-  /**
-   * Calcular status de uma promissória baseado em suas parcelas
-   */
-  private static calcularStatusPromissoria(promissoria: Promissoria): Promissoria['status'] {
-    if (!promissoria.parcelado || !promissoria.parcelas) {
-      const hoje = new Date();
-      const limite = new Date(promissoria.dataLimite);
-      const valorTotalPago = promissoria.valorPago || 0;
-      
-      if (valorTotalPago >= promissoria.valor) {
-        return limite < hoje ? 'pago_com_atraso' : 'pago';
-      }
-      
-      return limite < hoje ? 'atrasado' : 'pendente';
+  static excluirPagamento(parcela: Parcela, pagamentoId: string): Parcela {
+    const pagamentoIndex = parcela.pagamentos.findIndex(p => p.id === pagamentoId);
+    if (pagamentoIndex === -1) {
+      throw new Error('Pagamento não encontrado');
     }
 
-    const todasPagas = promissoria.parcelas.every(p => p.paga);
-    const algumaPagaComAtraso = promissoria.parcelas.some(p => p.pagoComAtraso);
-    const algumaAtrasada = promissoria.parcelas.some(p => {
-      const vencimento = new Date(p.dataVencimento);
-      return !p.paga && vencimento < new Date();
-    });
-    
-    if (todasPagas) {
-      return algumaPagaComAtraso ? 'pago_com_atraso' : 'pago';
-    }
-    
-    return algumaAtrasada ? 'atrasado' : 'pendente';
+    const pagamento = parcela.pagamentos[pagamentoIndex];
+    const novoValorPago = Math.max(0, parcela.valorPago - pagamento.valor);
+    const hoje = new Date().toISOString().split('T')[0];
+    const vencimento = new Date(parcela.dataVencimento).toISOString().split('T')[0];
+    const pagoComAtraso = hoje > vencimento;
+
+    const pagamentosAtualizados = parcela.pagamentos.filter(p => p.id !== pagamentoId);
+
+    return {
+      ...parcela,
+      valorPago: novoValorPago,
+      paga: novoValorPago >= parcela.valor,
+      pagoComAtraso: pagoComAtraso && novoValorPago < parcela.valor,
+      status: novoValorPago >= parcela.valor 
+        ? (pagoComAtraso ? 'pago_com_atraso' : 'pago')
+        : (hoje > vencimento ? 'atrasado' : 'pendente'),
+      pagamentos: pagamentosAtualizados
+    };
   }
 }

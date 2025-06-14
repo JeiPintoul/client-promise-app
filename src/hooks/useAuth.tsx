@@ -45,7 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const userData = JSON.parse(savedUser);
     
-    if (userData.password !== password) {
+    // Se o usuário não tem senha (funcionários sem senha), permitir login sem senha
+    if (userData.password === '' && password === '') {
+      // Login sem senha permitido para funcionários
+    } else if (userData.password !== password) {
       throw new Error('Senha incorreta');
     }
     
@@ -77,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const newUser = {
       id: userId,
       nome,
-      password,
+      password: password || '', // Permitir senha vazia para funcionários
       role: finalRole
     };
 

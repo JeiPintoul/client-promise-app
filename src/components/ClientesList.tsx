@@ -1,12 +1,14 @@
+
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Search, Eye } from 'lucide-react';
+import { Search, Eye, Trash2 } from 'lucide-react';
 import { ClienteDetail } from './ClienteDetail';
 
 type Cliente = {
@@ -105,6 +107,50 @@ export function ClientesList() {
       toast({
         title: "Erro",
         description: "Erro ao atualizar elegibilidade: " + error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const excluirCliente = (cliente: Cliente) => {
+    if (!isManager) {
+      toast({
+        title: "Acesso Negado",
+        description: "Apenas gerentes podem excluir clientes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Verificar se o cliente possui promissórias
+      const promissorias = JSON.parse(localStorage.getItem('promissorias') || '[]');
+      const promissoriasCliente = promissorias.filter((p: any) => p.clienteId === cliente.id);
+      
+      if (promissoriasCliente.length > 0) {
+        toast({
+          title: "Erro",
+          description: "Não é possível excluir um cliente que possui promissórias cadastradas. Exclua primeiro as promissórias.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Remover cliente
+      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
+      const clientesAtualizados = clientesData.filter((c: Cliente) => c.id !== cliente.id);
+      
+      localStorage.setItem('clientes', JSON.stringify(clientesAtualizados));
+      setClientes(clientesAtualizados);
+
+      toast({
+        title: "Sucesso",
+        description: "Cliente excluído com sucesso!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir cliente: " + error.message,
         variant: "destructive",
       });
     }
@@ -210,13 +256,38 @@ export function ClientesList() {
                       Ver Detalhes
                     </Button>
                     {isManager && (
-                      <Button
-                        variant={cliente.elegibilidade === 'elegivel' ? 'destructive' : 'default'}
-                        size="sm"
-                        onClick={() => toggleElegibilidade(cliente)}
-                      >
-                        {cliente.elegibilidade === 'elegivel' ? 'Bloquear' : 'Desbloquear'}
-                      </Button>
+                      <>
+                        <Button
+                          variant={cliente.elegibilidade === 'elegivel' ? 'destructive' : 'default'}
+                          size="sm"
+                          onClick={() => toggleElegibilidade(cliente)}
+                        >
+                          {cliente.elegibilidade === 'elegivel' ? 'Bloquear' : 'Desbloquear'}
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm">
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Excluir
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir Cliente</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja excluir o cliente "{cliente.nome}"? 
+                                Esta ação não pode ser desfeita e só é possível se o cliente não possuir promissórias.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => excluirCliente(cliente)}>
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
                     )}
                   </div>
                 </div>

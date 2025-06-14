@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { EditarUsuario } from './EditarUsuario';
 import { Edit, UserPlus } from 'lucide-react';
@@ -24,7 +25,8 @@ export function GerenciarUsuarios() {
   const [formData, setFormData] = useState({
     nome: '',
     password: '',
-    role: 'funcionario' as 'gerente' | 'funcionario'
+    role: 'funcionario' as 'gerente' | 'funcionario',
+    semSenha: false
   });
   const [loading, setLoading] = useState(false);
   const { signUpWithName, user } = useAuth();
@@ -52,18 +54,43 @@ export function GerenciarUsuarios() {
     setLoading(true);
 
     try {
-      await signUpWithName(formData.nome, formData.password, formData.role);
+      // Se é funcionário sem senha, usar senha vazia
+      const senha = formData.role === 'funcionario' && formData.semSenha ? '' : formData.password;
+      
+      // Para funcionários sem senha, não exigir senha
+      if (formData.role === 'gerente' && !formData.password) {
+        toast({
+          title: "Erro de Validação",
+          description: "Gerentes devem ter uma senha.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!formData.semSenha && !formData.password && formData.role === 'funcionario') {
+        toast({
+          title: "Erro de Validação",
+          description: "Digite uma senha ou marque a opção 'Funcionário sem senha'.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await signUpWithName(formData.nome, senha, formData.role);
       
       toast({
         title: "Sucesso",
-        description: "Usuário criado com sucesso!",
+        description: formData.semSenha 
+          ? "Funcionário criado sem senha com sucesso!" 
+          : "Usuário criado com sucesso!",
       });
 
       // Limpar formulário
       setFormData({
         nome: '',
         password: '',
-        role: 'funcionario'
+        role: 'funcionario',
+        semSenha: false
       });
 
       setShowCreateForm(false);
@@ -153,6 +180,15 @@ export function GerenciarUsuarios() {
     return user?.role === 'gerente';
   };
 
+  const temSenha = (nomeUsuario: string) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem(`user_${nomeUsuario}`) || '{}');
+      return userData.password && userData.password !== '';
+    } catch {
+      return false;
+    }
+  };
+
   if (selectedUser) {
     return (
       <EditarUsuario
@@ -194,22 +230,11 @@ export function GerenciarUsuarios() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="role">Permissão</Label>
                   <Select
                     value={formData.role}
                     onValueChange={(value: 'gerente' | 'funcionario') =>
-                      setFormData(prev => ({ ...prev, role: value }))
+                      setFormData(prev => ({ ...prev, role: value, semSenha: value === 'gerente' ? false : prev.semSenha }))
                     }
                   >
                     <SelectTrigger>
@@ -221,6 +246,40 @@ export function GerenciarUsuarios() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {formData.role === 'funcionario' && (
+                  <div className="flex items-center space-x-2 md:col-span-2">
+                    <Checkbox
+                      id="semSenha"
+                      checked={formData.semSenha}
+                      onCheckedChange={(checked) => 
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          semSenha: !!checked,
+                          password: checked ? '' : prev.password
+                        }))
+                      }
+                    />
+                    <Label htmlFor="semSenha" className="text-sm">
+                      Funcionário sem senha (apenas para acesso limitado)
+                    </Label>
+                  </div>
+                )}
+
+                {!formData.semSenha && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="password">
+                      Senha {formData.role === 'gerente' ? '(obrigatória)' : '(opcional se marcado "sem senha")'}
+                    </Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                      required={formData.role === 'gerente' || !formData.semSenha}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -256,6 +315,11 @@ export function GerenciarUsuarios() {
                       <Badge variant={profile.role === 'gerente' ? 'default' : 'secondary'}>
                         {profile.role === 'gerente' ? 'Gerente' : 'Funcionário'}
                       </Badge>
+                      {!temSenha(profile.nome) && profile.role === 'funcionario' && (
+                        <Badge variant="outline">
+                          Sem Senha
+                        </Badge>
+                      )}
                       {isPrimeiroGerente(profile.id) && (
                         <Badge variant="outline">
                           Primeiro Gerente
