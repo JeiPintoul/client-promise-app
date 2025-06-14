@@ -62,6 +62,9 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
     return 'secondary' as const;
   };
 
+  // Para parcela única, sempre mostrar por padrão
+  const isParcelas = promissoria.parcelado && promissoria.numeroParcelas && promissoria.numeroParcelas > 1;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -92,7 +95,7 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
           </div>
           
           <div>
-            <strong>Tipo:</strong> {promissoria.parcelado 
+            <strong>Tipo:</strong> {isParcelas
               ? `Parcelado em ${promissoria.numeroParcelas}x de R$ ${(promissoria.valor / (promissoria.numeroParcelas || 1)).toFixed(2)}`
               : 'Pagamento único'
             }
@@ -111,43 +114,46 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>
-                {promissoria.parcelado ? 'Parcelas' : 'Detalhes do Pagamento'}
+                {isParcelas ? 'Parcelas' : 'Detalhes do Pagamento'}
               </CardTitle>
-              <Button
-                variant="outline"
-                onClick={() => setShowParcelas(!showParcelas)}
-              >
-                {showParcelas ? (
-                  <>
-                    <EyeOff className="w-4 h-4 mr-2" />
-                    Ocultar {promissoria.parcelado ? 'Parcelas' : 'Detalhes'}
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-4 h-4 mr-2" />
-                    Exibir {promissoria.parcelado ? 'Parcelas' : 'Detalhes'}
-                  </>
-                )}
-              </Button>
+              {isParcelas && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowParcelas(!showParcelas)}
+                >
+                  {showParcelas ? (
+                    <>
+                      <EyeOff className="w-4 h-4 mr-2" />
+                      Ocultar Parcelas
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4 mr-2" />
+                      Exibir Parcelas
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </CardHeader>
           
-          {showParcelas && (
+          {(showParcelas || !isParcelas) && (
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{promissoria.parcelado ? 'Parcela' : 'Item'}</TableHead>
+                    <TableHead>{isParcelas ? 'Parcela' : 'Item'}</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {promissoria.parcelas.map((parcela) => (
                     <TableRow key={parcela.numero}>
                       <TableCell>
-                        {promissoria.parcelado ? parcela.numero : 'Pagamento único'}
+                        {isParcelas ? parcela.numero : 'Pagamento único'}
                       </TableCell>
                       <TableCell>R$ {parcela.valor.toFixed(2)}</TableCell>
                       <TableCell>
@@ -157,6 +163,21 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
                         <Badge variant={getBadgeVariant(parcela)}>
                           {getStatusText(parcela)}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {parcela.pagamentos && parcela.pagamentos.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              // Aqui você pode navegar para a página de pagamentos da parcela
+                              // Implementar navegação similar ao que já existe no sistema
+                              console.log('Navegar para pagamentos da parcela:', parcela.id);
+                            }}
+                          >
+                            Ver Pagamentos ({parcela.pagamentos.length})
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

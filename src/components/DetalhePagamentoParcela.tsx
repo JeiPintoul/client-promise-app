@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -136,6 +137,8 @@ export function DetalhePagamentoParcela({
       title: "Sucesso",
       description: `Pagamento de R$ ${confirmDialog.valor.toFixed(2)} excluído com sucesso!`,
     });
+
+    setConfirmDialog({ isOpen: false, pagamentoId: '', valor: 0 });
   };
 
   return (
@@ -148,7 +151,7 @@ export function DetalhePagamentoParcela({
           </Button>
           <div>
             <h1 className="text-2xl font-bold">
-              Pagamentos - Parcela {parcela.numero}
+              Pagamentos - {parcela.numero === 1 && !promissoria.parcelado ? 'Parcela Única' : `Parcela ${parcela.numero}`}
             </h1>
             <p className="text-muted-foreground">
               Valor da parcela: R$ {parcela.valor.toFixed(2)} | 
@@ -176,12 +179,13 @@ export function DetalhePagamentoParcela({
                         <div className="flex items-center gap-3 mb-2">
                           {editandoPagamento === pagamento.id ? (
                             <div className="flex items-center gap-2">
-                              <input
+                              <Input
                                 type="number"
                                 step="0.01"
                                 value={valorEdicao}
                                 onChange={(e) => setValorEdicao(e.target.value)}
-                                className="w-24 px-2 py-1 border rounded"
+                                className="w-32"
+                                autoFocus
                               />
                               <Button size="sm" onClick={() => handleSalvarEdicao(pagamento.id)}>
                                 Salvar
