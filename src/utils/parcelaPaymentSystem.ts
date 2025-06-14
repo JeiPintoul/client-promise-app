@@ -5,8 +5,12 @@ export class ParcelaPaymentSystem {
   static pagarParcela(
     parcela: Parcela,
     valor: number,
-    tipo: keyof typeof TipoPagamento,
-    observacoes?: string
+    dadosPagamento: {
+      tipo: Pagamento['tipo'];
+      dataHora: string;
+      observacoes?: string;
+      promissoriaId?: string;
+    }
   ): { parcelaAtualizada: Parcela; pagamento: Pagamento } {
     const valorPago = Math.min(valor, parcela.valor - parcela.valorPago);
     const novoValorPago = parcela.valorPago + valorPago;
@@ -28,11 +32,12 @@ export class ParcelaPaymentSystem {
     const pagamento: Pagamento = {
       id: crypto.randomUUID(),
       valor: valorPago,
-      tipo,
-      dataHora: agora,
+      tipo: dadosPagamento.tipo,
+      dataHora: dadosPagamento.dataHora,
       parcelaId: parcela.id,
-      observacoes,
-      descricao: `Pagamento de parcela ${parcela.numero} - R$ ${valorPago.toFixed(2)} (${tipo})`,
+      promissoriaId: dadosPagamento.promissoriaId,
+      observacoes: dadosPagamento.observacoes,
+      descricao: `Pagamento de parcela ${parcela.numero} - R$ ${valorPago.toFixed(2)} (${dadosPagamento.tipo})`,
       created_at: agora
     };
 
@@ -44,8 +49,11 @@ export class ParcelaPaymentSystem {
   static pagarPromissoria(
     promissoria: Promissoria,
     valor: number,
-    tipo: keyof typeof TipoPagamento,
-    observacoes?: string
+    dadosPagamento: {
+      tipo: Pagamento['tipo'];
+      dataHora: string;
+      observacoes?: string;
+    }
   ): { promissoriaAtualizada: Promissoria; pagamentosRealizados: Pagamento[] } {
     if (!promissoria.parcelas || promissoria.parcelas.length === 0) {
       throw new Error('Promissória não possui parcelas para pagamento');
@@ -66,13 +74,16 @@ export class ParcelaPaymentSystem {
 
       const valorParaParcela = Math.min(valorRestante, parcela.valor - parcela.valorPago);
       if (valorParaParcela > 0) {
-        const resultado = this.pagarParcela(parcela, valorParaParcela, tipo, observacoes);
+        const resultado = this.pagarParcela(parcela, valorParaParcela, {
+          ...dadosPagamento,
+          promissoriaId: promissoria.id
+        });
         parcelasAtualizadas[index] = resultado.parcelaAtualizada;
         
         // Atualizar a descrição do pagamento para incluir informações da promissória
         const pagamentoAtualizado = {
           ...resultado.pagamento,
-          descricao: `Pagamento da promissória - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${tipo})`
+          descricao: `Pagamento da promissória - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${dadosPagamento.tipo})`
         };
         
         pagamentosRealizados.push(pagamentoAtualizado);
@@ -91,11 +102,14 @@ export class ParcelaPaymentSystem {
     return { promissoriaAtualizada, pagamentosRealizados };
   }
 
-  static pagarCliente(
-    promissorias: Promissoria[],
+  static distribuirPagamentoAutomatico(
     valor: number,
-    tipo: keyof typeof TipoPagamento,
-    observacoes?: string
+    promissorias: Promissoria[],
+    dadosPagamento: {
+      tipo: Pagamento['tipo'];
+      dataHora: string;
+      observacoes?: string;
+    }
   ): { promissoriasAtualizadas: Promissoria[]; pagamentosRealizados: Pagamento[] } {
     let valorRestante = valor;
     const promissoriasAtualizadas = [...promissorias];
@@ -140,13 +154,16 @@ export class ParcelaPaymentSystem {
 
       const valorParaParcela = Math.min(valorRestante, parcela.valor - parcela.valorPago);
       if (valorParaParcela > 0) {
-        const resultado = this.pagarParcela(parcela, valorParaParcela, tipo, observacoes);
+        const resultado = this.pagarParcela(parcela, valorParaParcela, {
+          ...dadosPagamento,
+          promissoriaId: promissoriasAtualizadas[promissoriaIndex].id
+        });
         promissoriasAtualizadas[promissoriaIndex].parcelas![parcelaIndex] = resultado.parcelaAtualizada;
         
         // Atualizar a descrição do pagamento para incluir informações do cliente
         const pagamentoAtualizado = {
           ...resultado.pagamento,
-          descricao: `Pagamento geral - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${tipo})`
+          descricao: `Pagamento geral - Parcela ${parcela.numero} - R$ ${valorParaParcela.toFixed(2)} (${dadosPagamento.tipo})`
         };
         
         pagamentosRealizados.push(pagamentoAtualizado);
@@ -170,7 +187,7 @@ export class ParcelaPaymentSystem {
     parcela: Parcela,
     pagamentoId: string,
     novoValor: number,
-    novoTipo: keyof typeof TipoPagamento,
+    novoTipo: Pagamento['tipo'],
     novasObservacoes?: string
   ): { parcelaAtualizada: Parcela; historicoEdicao: any } {
     const pagamentoIndex = parcela.pagamentos.findIndex(p => p.id === pagamentoId);
