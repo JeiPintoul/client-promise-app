@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { PaymentConfirmDialog } from './PaymentConfirmDialog';
 import { TipoPagamento, type Promissoria, type Cliente, type Pagamento } from '@/types';
-import { distribuirPagamentoAutomatico, calcularStatusPromissoria, calcularStatusParcela } from '@/utils/paymentUtils';
+import { ParcelaPaymentSystem } from '@/utils/parcelaPaymentSystem';
 
 interface RegistroPagamentoProps {
   cliente: Cliente;
@@ -72,28 +72,6 @@ export function RegistroPagamento({
       return false;
     }
 
-    if (tipo === 'geral') {
-      const totalDevido = promissorias.reduce((acc, p) => acc + (p.valor - (p.valorPago || 0)), 0);
-      
-      if (totalDevido <= 0) {
-        toast({
-          title: "Aviso",
-          description: "Este cliente não possui valores pendentes para pagamento.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      if (valor > totalDevido) {
-        toast({
-          title: "Valor Excedente",
-          description: `O valor informado (R$ ${valor.toFixed(2)}) é maior que o total devido (R$ ${totalDevido.toFixed(2)}).`,
-          variant: "destructive",
-        });
-        return false;
-      }
-    }
-
     return true;
   };
 
@@ -127,17 +105,16 @@ export function RegistroPagamento({
     setLoading(true);
     
     try {
-      const pagamentoBase = {
-        valor,
+      const dadosPagamento = {
         tipo: formData.tipo,
         dataHora: formData.dataHora,
         observacoes: formData.observacoes
       };
 
-      const { promissoriasAtualizadas } = distribuirPagamentoAutomatico(
+      const { promissoriasAtualizadas } = ParcelaPaymentSystem.distribuirPagamentoAutomatico(
         valor,
         promissorias,
-        pagamentoBase
+        dadosPagamento
       );
 
       onPagamentoRegistrado(promissoriasAtualizadas);
@@ -152,12 +129,11 @@ export function RegistroPagamento({
   };
 
   const processarPagamentoPromissoria = async (valor: number, promissoriaId: string): Promise<void> => {
-    const promissoriaIndex = promissorias.findIndex(p => p.id === promissoriaId);
-    if (promissoriaIndex === -1) {
+    const promissoria = promissorias.find(p => p.id === promissoriaId);
+    if (!promissoria) {
       throw new Error('Promissória não encontrada');
     }
 
-    const promissoria = { ...promissorias[promissoriaIndex] };
     const valorDevido = promissoria.valor - (promissoria.valorPago || 0);
 
     if (valor > valorDevido) {
@@ -175,101 +151,34 @@ export function RegistroPagamento({
           }
           
           const valorFinal = action === 'adjust' ? (novoValor || valorDevido) : Math.min(valor, valorDevido);
-          await executarPagamentoPromissoria(valorFinal, promissoriaIndex, promissoria);
+          await executarPagamentoPromissoria(valorFinal, promissoria);
         }
       });
       return;
     }
 
-    await executarPagamentoPromissoria(valor, promissoriaIndex, promissoria);
+    await executarPagamentoPromissoria(valor, promissoria);
   };
 
-  const executarPagamentoPromissoria = async (valor: number, promissoriaIndex: number, promissoria: Promissoria): Promise<void> => {
+  const executarPagamentoPromissoria = async (valor: number, promissoria: Promissoria): Promise<void> => {
     setLoading(true);
     
     try {
-      const novoPagamento: Pagamento = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        valor,
+      const dadosPagamento = {
         tipo: formData.tipo,
         dataHora: formData.dataHora,
-        promissoriaId: promissoria.id,
-        observacoes: formData.observacoes,
-        descricao: `Pagamento de promissória completa - R$ ${promissoria.valor.toFixed(2)}`,
-        created_at: new Date().toISOString()
+        observacoes: formData.observacoes
       };
 
-      // Distribuir o valor entre as parcelas se for parcelada
-      if (promissoria.parcelado && promissoria.parcelas) {
-        let valorRestante = valor;
-        const valorAnteriorPromissoria = promissoria.valorPago || 0;
-        
-        // Ordenar parcelas por vencimento
-        const parcelasOrdenadas = [...promissoria.parcelas].sort((a, b) => 
-          new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime()
-        );
-        
-        parcelasOrdenadas.forEach(parcela => {
-          if (valorRestante <= 0) return;
-          
-          const valorDevidoParcela = parcela.valor - (parcela.valorPago || 0);
-          if (valorDevidoParcela <= 0) return;
-          
-          const valorParaParcela = Math.min(valorRestante, valorDevidoParcela);
-          const valorAnteriorParcela = parcela.valorPago || 0;
-          
-          // Criar pagamento específico da parcela
-          const pagamentoParcela: Pagamento = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9) + '-parcela',
-            valor: valorParaParcela,
-            tipo: formData.tipo,
-            dataHora: formData.dataHora,
-            promissoriaId: promissoria.id,
-            parcelaId: parcela.id,
-            observacoes: formData.observacoes,
-            descricao: `Pagamento automático parcela ${parcela.numero}/${promissoria.numeroParcelas} | Anterior: R$ ${valorAnteriorParcela.toFixed(2)} → Atual: R$ ${(valorAnteriorParcela + valorParaParcela).toFixed(2)} | Restante: R$ ${(parcela.valor - valorAnteriorParcela - valorParaParcela).toFixed(2)}`,
-            created_at: new Date().toISOString()
-          };
-          
-          // Atualizar parcela
-          parcela.valorPago = valorAnteriorParcela + valorParaParcela;
-          parcela.pagamentos = [...(parcela.pagamentos || []), pagamentoParcela];
-          
-          // Verificar se foi pago com atraso
-          const hoje = new Date();
-          const vencimento = new Date(parcela.dataVencimento);
-          if (parcela.valorPago >= parcela.valor) {
-            parcela.paga = true;
-            parcela.pagoComAtraso = vencimento < hoje;
-          }
-          parcela.status = calcularStatusParcela(parcela);
-          
-          valorRestante -= valorParaParcela;
-        });
-        
-        // Atualizar descrição do pagamento principal
-        novoPagamento.descricao = `Pagamento de promissória (distribuído entre parcelas) | Anterior: R$ ${valorAnteriorPromissoria.toFixed(2)} → Atual: R$ ${(valorAnteriorPromissoria + valor).toFixed(2)} | Restante: R$ ${(promissoria.valor - valorAnteriorPromissoria - valor).toFixed(2)}`;
-      } else {
-        const valorAnterior = promissoria.valorPago || 0;
-        novoPagamento.descricao = `Pagamento de promissória completa | Anterior: R$ ${valorAnterior.toFixed(2)} → Atual: R$ ${(valorAnterior + valor).toFixed(2)} | Restante: R$ ${(promissoria.valor - valorAnterior - valor).toFixed(2)}`;
-      }
+      const { promissoriaAtualizada } = ParcelaPaymentSystem.pagarPromissoria(
+        promissoria,
+        valor,
+        dadosPagamento
+      );
 
-      // Atualizar promissória
-      promissoria.valorPago = (promissoria.valorPago || 0) + valor;
-      promissoria.pagamentos = [...(promissoria.pagamentos || []), novoPagamento];
-      promissoria.updated_at = new Date().toISOString();
-
-      // Verificar se foi pago com atraso
-      const hoje = new Date();
-      const limite = new Date(promissoria.dataLimite);
-      if (promissoria.valorPago >= promissoria.valor && limite < hoje) {
-        promissoria.status = 'pago_com_atraso';
-      } else {
-        promissoria.status = calcularStatusPromissoria(promissoria);
-      }
-
-      const novasPromissorias = [...promissorias];
-      novasPromissorias[promissoriaIndex] = promissoria;
+      const novasPromissorias = promissorias.map(p => 
+        p.id === promissoria.id ? promissoriaAtualizada : p
+      );
 
       onPagamentoRegistrado(novasPromissorias);
 
@@ -283,22 +192,20 @@ export function RegistroPagamento({
   };
 
   const processarPagamentoParcela = async (valor: number, promissoriaId: string, parcelaId: string): Promise<void> => {
-    const promissoriaIndex = promissorias.findIndex(p => p.id === promissoriaId);
-    if (promissoriaIndex === -1) {
+    const promissoria = promissorias.find(p => p.id === promissoriaId);
+    if (!promissoria) {
       throw new Error('Promissória não encontrada');
     }
 
-    const promissoria = { ...promissorias[promissoriaIndex] };
     if (!promissoria.parcelas) {
       throw new Error('Promissória não é parcelada');
     }
 
-    const parcelaIndex = promissoria.parcelas.findIndex(p => p.id === parcelaId);
-    if (parcelaIndex === -1) {
+    const parcela = promissoria.parcelas.find(p => p.id === parcelaId);
+    if (!parcela) {
       throw new Error('Parcela não encontrada');
     }
 
-    const parcela = { ...promissoria.parcelas[parcelaIndex] };
     const valorDevido = parcela.valor - (parcela.valorPago || 0);
 
     if (valor > valorDevido) {
@@ -316,56 +223,47 @@ export function RegistroPagamento({
           }
           
           const valorFinal = action === 'adjust' ? (novoValor || valorDevido) : Math.min(valor, valorDevido);
-          await executarPagamentoParcela(valorFinal, promissoriaIndex, promissoria, parcelaIndex, parcela);
+          await executarPagamentoParcela(valorFinal, promissoria, parcela);
         }
       });
       return;
     }
 
-    await executarPagamentoParcela(valor, promissoriaIndex, promissoria, parcelaIndex, parcela);
+    await executarPagamentoParcela(valor, promissoria, parcela);
   };
 
-  const executarPagamentoParcela = async (valor: number, promissoriaIndex: number, promissoria: Promissoria, parcelaIndex: number, parcela: any): Promise<void> => {
+  const executarPagamentoParcela = async (valor: number, promissoria: Promissoria, parcela: any): Promise<void> => {
     setLoading(true);
     
     try {
-      const valorAnteriorParcela = parcela.valorPago || 0;
-      const valorAnteriorPromissoria = promissoria.valorPago || 0;
-      
-      const novoPagamento: Pagamento = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        valor,
+      const dadosPagamento = {
         tipo: formData.tipo,
         dataHora: formData.dataHora,
-        promissoriaId: promissoria.id,
-        parcelaId: parcela.id,
         observacoes: formData.observacoes,
-        descricao: `Pagamento parcela ${parcela.numero}/${promissoria.numeroParcelas} | Anterior: R$ ${valorAnteriorParcela.toFixed(2)} → Atual: R$ ${(valorAnteriorParcela + valor).toFixed(2)} | Restante: R$ ${(parcela.valor - valorAnteriorParcela - valor).toFixed(2)}`,
-        created_at: new Date().toISOString()
+        promissoriaId: promissoria.id
       };
 
-      // Atualizar parcela
-      parcela.valorPago = valorAnteriorParcela + valor;
-      parcela.pagamentos = [...(parcela.pagamentos || []), novoPagamento];
+      const { parcelaAtualizada } = ParcelaPaymentSystem.pagarParcela(
+        parcela,
+        valor,
+        dadosPagamento
+      );
 
-      // Verificar se foi pago com atraso
-      const hoje = new Date();
-      const vencimento = new Date(parcela.dataVencimento);
-      if (parcela.valorPago >= parcela.valor) {
-        parcela.paga = true;
-        parcela.pagoComAtraso = vencimento < hoje;
-      }
-      parcela.status = calcularStatusParcela(parcela);
+      // Atualizar a promissória com a parcela paga
+      const parcelasAtualizadas = promissoria.parcelas!.map(p => 
+        p.id === parcela.id ? parcelaAtualizada : p
+      );
 
-      // Atualizar promissória
-      promissoria.parcelas[parcelaIndex] = parcela;
-      promissoria.valorPago = promissoria.parcelas.reduce((acc, p) => acc + (p.valorPago || 0), 0);
-      promissoria.pagamentos = [...(promissoria.pagamentos || []), novoPagamento];
-      promissoria.updated_at = new Date().toISOString();
-      promissoria.status = calcularStatusPromissoria(promissoria);
+      const promissoriaAtualizada = {
+        ...promissoria,
+        parcelas: parcelasAtualizadas,
+        valorPago: parcelasAtualizadas.reduce((acc, p) => acc + (p.valorPago || 0), 0),
+        updated_at: new Date().toISOString()
+      };
 
-      const novasPromissorias = [...promissorias];
-      novasPromissorias[promissoriaIndex] = promissoria;
+      const novasPromissorias = promissorias.map(p => 
+        p.id === promissoria.id ? promissoriaAtualizada : p
+      );
 
       onPagamentoRegistrado(novasPromissorias);
 

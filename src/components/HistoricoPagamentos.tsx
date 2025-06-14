@@ -18,30 +18,18 @@ interface HistoricoPagamentosProps {
   onPagamentoAtualizado?: (promissoriasAtualizadas: Promissoria[]) => void;
 }
 
-interface PagamentoAgrupado {
-  id: string;
-  valor: number;
-  tipo: string;
-  dataHora: string;
-  observacoes?: string;
-  descricao: string;
-  status: 'no_tempo' | 'atrasado';
+interface PagamentoDetalhado extends Pagamento {
+  origemTipo: 'promissoria' | 'parcela';
   promissoriaInfo: {
     id: string;
     valor: number;
+    numeroParcelas?: number;
   };
   parcelaInfo?: {
     id: string;
     numero: number;
+    valorParcela: number;
   };
-  subPagamentos?: (Pagamento & { parcelaInfo?: { id: string; numero: number } })[];
-  editado?: boolean;
-  historicoEdicoes?: Array<{
-    data: string;
-    alteracao: string;
-    valorAnterior?: number;
-    valorNovo?: number;
-  }>;
 }
 
 export function HistoricoPagamentos({
@@ -54,105 +42,85 @@ export function HistoricoPagamentos({
 }: HistoricoPagamentosProps) {
   const [ordem, setOrdem] = useState<OrdemPagamento>('data_desc');
   const [filtro, setFiltro] = useState<FiltroPagamento>('todos');
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [editandoPagamento, setEditandoPagamento] = useState<string | null>(null);
   const [valorEdicao, setValorEdicao] = useState('');
   
   const { toast } = useToast();
 
-  const extrairPagamentosAgrupados = (): PagamentoAgrupado[] => {
-    let pagamentosAgrupados: PagamentoAgrupado[] = [];
+  /**
+   * Extrai todos os pagamentos de parcelas de forma centralizada
+   */
+  const extrairPagamentosDetalhados = (): PagamentoDetalhado[] => {
+    const pagamentos: PagamentoDetalhado[] = [];
 
     promissorias.forEach(promissoria => {
       if (promissoriaId && promissoria.id !== promissoriaId) return;
 
-      // Pagamentos diretos da promissória
-      if (promissoria.pagamentos) {
-        const pagamentosPromissoria = promissoria.pagamentos.filter(p => !p.parcelaId);
-        
-        pagamentosPromissoria.forEach(pagamento => {
-          const dataVencimento = new Date(promissoria.dataLimite);
-          const pagamentoData = new Date(pagamento.dataHora);
-          
-          // Buscar sub-pagamentos (pagamentos de parcelas relacionados)
-          const subPagamentos = promissoria.parcelas ? 
-            promissoria.parcelas
-              .filter(parcela => parcela.pagamentos && parcela.pagamentos.length > 0)
-              .flatMap(parcela => 
-                parcela.pagamentos!
-                  .filter(p => new Date(p.dataHora).getTime() === pagamentoData.getTime())
-                  .map(p => ({
-                    ...p,
-                    parcelaInfo: { id: parcela.id, numero: parcela.numero }
-                  }))
-              ) : undefined;
-          
-          pagamentosAgrupados.push({
-            id: pagamento.id,
-            valor: pagamento.valor,
-            tipo: formatarTipoPagamento(pagamento.tipo),
-            dataHora: pagamento.dataHora,
-            observacoes: pagamento.observacoes,
-            descricao: pagamento.descricao || `Pagamento de promissória completa - R$ ${promissoria.valor.toFixed(2)}`,
-            status: pagamentoData > dataVencimento ? 'atrasado' : 'no_tempo',
-            promissoriaInfo: {
-              id: promissoria.id,
-              valor: promissoria.valor
-            },
-            subPagamentos: subPagamentos && subPagamentos.length > 0 ? subPagamentos : undefined
-          });
-        });
-      }
-
-      // Pagamentos de parcelas específicas (não incluídos em pagamentos gerais)
+      // Pagamentos de parcelas (fonte principal da verdade)
       if (promissoria.parcelas) {
         promissoria.parcelas.forEach(parcela => {
           if (parcelaId && parcela.id !== parcelaId) return;
           
           if (parcela.pagamentos && parcela.pagamentos.length > 0) {
-            const pagamentosNaoIncluidos = parcela.pagamentos.filter(pagamentoParcela => 
-              !pagamentosAgrupados.some(grupo => 
-                grupo.subPagamentos?.some(sub => sub.id === pagamentoParcela.id)
-              )
-            );
-
-            pagamentosNaoIncluidos.forEach(pagamento => {
+            parcela.pagamentos.forEach(pagamento => {
               const dataVencimento = new Date(parcela.dataVencimento);
               const pagamentoData = new Date(pagamento.dataHora);
               
-              pagamentosAgrupados.push({
-                id: pagamento.id,
-                valor: pagamento.valor,
-                tipo: formatarTipoPagamento(pagamento.tipo),
-                dataHora: pagamento.dataHora,
-                observacoes: pagamento.observacoes,
-                descricao: pagamento.descricao || `Pagamento da parcela ${parcela.numero}/${promissoria.numeroParcelas} - R$ ${parcela.valor.toFixed(2)}`,
-                status: pagamentoData > dataVencimento ? 'atrasado' : 'no_tempo',
+              pagamentos.push({
+                ...pagamento,
+                origemTipo: 'parcela',
                 promissoriaInfo: {
                   id: promissoria.id,
-                  valor: promissoria.valor
+                  valor: promissoria.valor,
+                  numeroParcelas: promissoria.numeroParcelas
                 },
                 parcelaInfo: {
                   id: parcela.id,
-                  numero: parcela.numero
+                  numero: parcela.numero,
+                  valorParcela: parcela.valor
                 }
               });
             });
           }
         });
       }
+
+      // Pagamentos principais da promissória (apenas para referência)
+      if (promissoria.pagamentos) {
+        promissoria.pagamentos
+          .filter(p => !p.parcelaId) // Apenas pagamentos não associados a parcelas específicas
+          .forEach(pagamento => {
+            const dataLimite = new Date(promissoria.dataLimite);
+            const pagamentoData = new Date(pagamento.dataHora);
+            
+            pagamentos.push({
+              ...pagamento,
+              origemTipo: 'promissoria',
+              promissoriaInfo: {
+                id: promissoria.id,
+                valor: promissoria.valor,
+                numeroParcelas: promissoria.numeroParcelas
+              }
+            });
+          });
+      }
     });
 
-    return pagamentosAgrupados;
+    return pagamentos;
   };
 
-  const pagamentosAgrupados = extrairPagamentosAgrupados();
+  const pagamentosDetalhados = extrairPagamentosDetalhados();
 
   // Aplicar filtros
-  const pagamentosFiltrados = pagamentosAgrupados.filter(pagamento => {
+  const pagamentosFiltrados = pagamentosDetalhados.filter(pagamento => {
     if (filtro === 'todos') return true;
-    if (filtro === 'atrasados') return pagamento.status === 'atrasado';
-    if (filtro === 'no_tempo') return pagamento.status === 'no_tempo';
+    
+    const isAtrasado = pagamento.origemTipo === 'parcela' 
+      ? new Date(pagamento.dataHora) > new Date(pagamento.parcelaInfo!.valorParcela) // Aproximação
+      : pagamento.descricao?.includes('atraso');
+    
+    if (filtro === 'atrasados') return isAtrasado;
+    if (filtro === 'no_tempo') return !isAtrasado;
     return true;
   });
 
@@ -172,16 +140,6 @@ export function HistoricoPagamentos({
     }
   });
 
-  const toggleExpansao = (pagamentoId: string) => {
-    const novosExpandidos = new Set(expandidos);
-    if (novosExpandidos.has(pagamentoId)) {
-      novosExpandidos.delete(pagamentoId);
-    } else {
-      novosExpandidos.add(pagamentoId);
-    }
-    setExpandidos(novosExpandidos);
-  };
-
   const handleEditarPagamento = (pagamentoId: string, valorAtual: number) => {
     setEditandoPagamento(pagamentoId);
     setValorEdicao(valorAtual.toString());
@@ -199,29 +157,11 @@ export function HistoricoPagamentos({
       return;
     }
 
-    // Encontrar e atualizar o pagamento
     const novasPromissorias = [...promissorias];
     let pagamentoEncontrado = false;
     let valorAnterior = 0;
 
     novasPromissorias.forEach(promissoria => {
-      // Verificar pagamentos da promissória
-      if (promissoria.pagamentos) {
-        const pagamentoIndex = promissoria.pagamentos.findIndex(p => p.id === pagamentoId);
-        if (pagamentoIndex !== -1) {
-          valorAnterior = promissoria.pagamentos[pagamentoIndex].valor;
-          const diferenca = novoValor - valorAnterior;
-          
-          promissoria.pagamentos[pagamentoIndex].valor = novoValor;
-          promissoria.pagamentos[pagamentoIndex].descricao = 
-            (promissoria.pagamentos[pagamentoIndex].descricao || '') + ` [EDITADO: R$ ${valorAnterior.toFixed(2)} → R$ ${novoValor.toFixed(2)}]`;
-          
-          promissoria.valorPago = (promissoria.valorPago || 0) + diferenca;
-          promissoria.updated_at = new Date().toISOString();
-          pagamentoEncontrado = true;
-        }
-      }
-
       // Verificar pagamentos das parcelas
       if (promissoria.parcelas) {
         promissoria.parcelas.forEach(parcela => {
@@ -232,8 +172,18 @@ export function HistoricoPagamentos({
               const diferenca = novoValor - valorAnterior;
               
               parcela.pagamentos[pagamentoIndex].valor = novoValor;
-              parcela.pagamentos[pagamentoIndex].descricao = 
-                (parcela.pagamentos[pagamentoIndex].descricao || '') + ` [EDITADO: R$ ${valorAnterior.toFixed(2)} → R$ ${novoValor.toFixed(2)}]`;
+              parcela.pagamentos[pagamentoIndex].editado = true;
+              
+              if (!parcela.pagamentos[pagamentoIndex].historicoEdicoes) {
+                parcela.pagamentos[pagamentoIndex].historicoEdicoes = [];
+              }
+              
+              parcela.pagamentos[pagamentoIndex].historicoEdicoes!.push({
+                data: new Date().toISOString(),
+                alteracao: `Valor alterado de R$ ${valorAnterior.toFixed(2)} para R$ ${novoValor.toFixed(2)}`,
+                valorAnterior,
+                valorNovo: novoValor
+              });
               
               parcela.valorPago = (parcela.valorPago || 0) + diferenca;
               promissoria.valorPago = (promissoria.valorPago || 0) + diferenca;
@@ -242,6 +192,33 @@ export function HistoricoPagamentos({
             }
           }
         });
+      }
+
+      // Verificar pagamentos da promissória
+      if (promissoria.pagamentos) {
+        const pagamentoIndex = promissoria.pagamentos.findIndex(p => p.id === pagamentoId);
+        if (pagamentoIndex !== -1) {
+          valorAnterior = promissoria.pagamentos[pagamentoIndex].valor;
+          const diferenca = novoValor - valorAnterior;
+          
+          promissoria.pagamentos[pagamentoIndex].valor = novoValor;
+          promissoria.pagamentos[pagamentoIndex].editado = true;
+          
+          if (!promissoria.pagamentos[pagamentoIndex].historicoEdicoes) {
+            promissoria.pagamentos[pagamentoIndex].historicoEdicoes = [];
+          }
+          
+          promissoria.pagamentos[pagamentoIndex].historicoEdicoes!.push({
+            data: new Date().toISOString(),
+            alteracao: `Valor alterado de R$ ${valorAnterior.toFixed(2)} para R$ ${novoValor.toFixed(2)}`,
+            valorAnterior,
+            valorNovo: novoValor
+          });
+          
+          promissoria.valorPago = (promissoria.valorPago || 0) + diferenca;
+          promissoria.updated_at = new Date().toISOString();
+          pagamentoEncontrado = true;
+        }
       }
     });
 
@@ -267,18 +244,6 @@ export function HistoricoPagamentos({
     let valorExcluido = 0;
 
     novasPromissorias.forEach(promissoria => {
-      // Verificar pagamentos da promissória
-      if (promissoria.pagamentos) {
-        const pagamentoIndex = promissoria.pagamentos.findIndex(p => p.id === pagamentoId);
-        if (pagamentoIndex !== -1) {
-          valorExcluido = promissoria.pagamentos[pagamentoIndex].valor;
-          promissoria.pagamentos.splice(pagamentoIndex, 1);
-          promissoria.valorPago = (promissoria.valorPago || 0) - valorExcluido;
-          promissoria.updated_at = new Date().toISOString();
-          pagamentoEncontrado = true;
-        }
-      }
-
       // Verificar pagamentos das parcelas
       if (promissoria.parcelas) {
         promissoria.parcelas.forEach(parcela => {
@@ -295,6 +260,18 @@ export function HistoricoPagamentos({
             }
           }
         });
+      }
+
+      // Verificar pagamentos da promissória
+      if (promissoria.pagamentos) {
+        const pagamentoIndex = promissoria.pagamentos.findIndex(p => p.id === pagamentoId);
+        if (pagamentoIndex !== -1) {
+          valorExcluido = promissoria.pagamentos[pagamentoIndex].valor;
+          promissoria.pagamentos.splice(pagamentoIndex, 1);
+          promissoria.valorPago = (promissoria.valorPago || 0) - valorExcluido;
+          promissoria.updated_at = new Date().toISOString();
+          pagamentoEncontrado = true;
+        }
       }
     });
 
@@ -373,18 +350,26 @@ export function HistoricoPagamentos({
                       ) : (
                         <span className="font-semibold">R$ {pagamento.valor.toFixed(2)}</span>
                       )}
-                      <Badge variant="outline">{pagamento.tipo}</Badge>
-                      <Badge variant={pagamento.status === 'atrasado' ? 'destructive' : 'default'}>
-                        {pagamento.status === 'atrasado' ? 'Pago com Atraso' : 'Pago no Prazo'}
+                      <Badge variant="outline">{formatarTipoPagamento(pagamento.tipo)}</Badge>
+                      <Badge variant={pagamento.origemTipo === 'parcela' ? 'default' : 'secondary'}>
+                        {pagamento.origemTipo === 'parcela' 
+                          ? `Parcela ${pagamento.parcelaInfo?.numero}` 
+                          : 'Promissória'
+                        }
                       </Badge>
                       {pagamento.editado && (
-                        <Badge variant="secondary">Editado</Badge>
+                        <Badge variant="destructive">
+                          Editado {pagamento.historicoEdicoes?.length || 1}x
+                        </Badge>
                       )}
                     </div>
                     
                     <div className="text-sm text-muted-foreground space-y-1">
                       <div><strong>Data:</strong> {new Date(pagamento.dataHora).toLocaleString('pt-BR')}</div>
                       <div><strong>Descrição:</strong> {pagamento.descricao}</div>
+                      {pagamento.observacoes && (
+                        <div><strong>Observações:</strong> {pagamento.observacoes}</div>
+                      )}
                     </div>
                   </div>
                   
@@ -421,73 +406,20 @@ export function HistoricoPagamentos({
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     )}
-                    
-                    {/* Botão de expansão */}
-                    {pagamento.subPagamentos && pagamento.subPagamentos.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleExpansao(pagamento.id)}
-                      >
-                        {expandidos.has(pagamento.id) ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                        <span className="ml-1">
-                          {pagamento.subPagamentos.length} parcela(s)
-                        </span>
-                      </Button>
-                    )}
                   </div>
                 </div>
-                
-                {pagamento.observacoes && (
-                  <div className="mt-2 text-sm">
-                    <strong>Observações:</strong> {pagamento.observacoes}
-                  </div>
-                )}
 
-                {/* Sub-pagamentos (parcelas) */}
-                {expandidos.has(pagamento.id) && pagamento.subPagamentos && (
-                  <div className="mt-4 pt-3 border-t space-y-3">
-                    <h5 className="font-medium text-sm">Detalhes por Parcela:</h5>
-                    {pagamento.subPagamentos.map((subPagamento) => (
-                      <div key={subPagamento.id} className="ml-4 p-3 bg-muted rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium">R$ {subPagamento.valor.toFixed(2)}</span>
-                              <Badge variant="outline">
-                                {formatarTipoPagamento(subPagamento.tipo)}
-                              </Badge>
-                              {subPagamento.parcelaInfo && (
-                                <Badge variant="secondary">
-                                  Parcela {subPagamento.parcelaInfo.numero}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              <div>{subPagamento.descricao}</div>
-                              <div>Data: {new Date(subPagamento.dataHora).toLocaleString('pt-BR')}</div>
-                              {subPagamento.observacoes && (
-                                <div>Obs: {subPagamento.observacoes}</div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {subPagamento.parcelaInfo && onNavigateToParcela && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onNavigateToParcela!(pagamento.promissoriaInfo.id, subPagamento.parcelaInfo!.id)}
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                            </Button>
-                          )}
+                {/* Histórico de edições */}
+                {pagamento.historicoEdicoes && pagamento.historicoEdicoes.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <h5 className="font-medium text-sm mb-2">Histórico de Edições:</h5>
+                    <div className="space-y-1">
+                      {pagamento.historicoEdicoes.map((edicao, index) => (
+                        <div key={index} className="text-xs text-muted-foreground">
+                          <span className="font-medium">{new Date(edicao.data).toLocaleString('pt-BR')}:</span> {edicao.alteracao}
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
