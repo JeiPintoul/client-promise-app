@@ -7,10 +7,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 interface Parcela {
+  id: string;
   numero: number;
   valor: number;
+  valorPago: number;
   dataVencimento: string;
   paga: boolean;
+  pagoComAtraso?: boolean;
+  status: 'pendente' | 'pago' | 'atrasado' | 'pago_com_atraso';
+  pagamentos: Array<{
+    id: string;
+    valor: number;
+    tipo: string;
+    dataHora: string;
+    descricao?: string;
+    observacoes?: string;
+  }>;
 }
 
 interface Promissoria {
@@ -27,9 +39,10 @@ interface Promissoria {
 interface ParcelasPromissoriaProps {
   promissoria: Promissoria;
   onBack: () => void;
+  onVerPagamentosParcela?: (parcela: Parcela, promissoria: Promissoria) => void;
 }
 
-export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoriaProps) {
+export function ParcelasPromissoria({ promissoria, onBack, onVerPagamentosParcela }: ParcelasPromissoriaProps) {
   const [showParcelas, setShowParcelas] = useState(false);
 
   const getStatusColor = (parcela: Parcela) => {
@@ -151,7 +164,7 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
                 </TableHeader>
                 <TableBody>
                   {promissoria.parcelas.map((parcela) => (
-                    <TableRow key={parcela.numero}>
+                    <TableRow key={parcela.id}>
                       <TableCell>
                         {isParcelas ? parcela.numero : 'Pagamento único'}
                       </TableCell>
@@ -170,9 +183,11 @@ export function ParcelasPromissoria({ promissoria, onBack }: ParcelasPromissoria
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              // Aqui você pode navegar para a página de pagamentos da parcela
-                              // Implementar navegação similar ao que já existe no sistema
-                              console.log('Navegar para pagamentos da parcela:', parcela.id);
+                              if (onVerPagamentosParcela) {
+                                onVerPagamentosParcela(parcela, promissoria);
+                              } else {
+                                console.log('Navegar para pagamentos da parcela:', parcela.id);
+                              }
                             }}
                           >
                             Ver Pagamentos ({parcela.pagamentos.length})
