@@ -16,18 +16,16 @@ import {
 import { ClientesList } from './ClientesList';
 import { CadastroCliente } from './CadastroCliente';
 import { ListaPromissorias } from './ListaPromissorias';
-import { CadastroPromissoria } from './CadastroPromissoria';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
 import { Configuracoes } from './Configuracoes';
 
 export function Dashboard() {
-  const { user, logout, isManager } = useAuth();
+  const { user, signOut, isManager } = useAuth();
   const [activeTab, setActiveTab] = useState('clientes');
   const [showCadastroCliente, setShowCadastroCliente] = useState(false);
-  const [showCadastroPromissoria, setShowCadastroPromissoria] = useState(false);
 
   const handleLogout = () => {
-    logout();
+    signOut();
   };
 
   return (
@@ -82,7 +80,7 @@ export function Dashboard() {
                 </Button>
               </div>
               {showCadastroCliente ? (
-                <CadastroCliente onClose={() => setShowCadastroCliente(false)} />
+                <CadastroCliente />
               ) : (
                 <ClientesList />
               )}
@@ -90,19 +88,7 @@ export function Dashboard() {
           </TabsContent>
 
           <TabsContent value="promissorias">
-            {showCadastroPromissoria ? (
-              <CadastroPromissoria onClose={() => setShowCadastroPromissoria(false)} />
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Button onClick={() => setShowCadastroPromissoria(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Nova Promissória
-                  </Button>
-                </div>
-                <ListaPromissorias />
-              </div>
-            )}
+            <ListaPromissorias />
           </TabsContent>
 
           {isManager && (
