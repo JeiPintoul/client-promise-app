@@ -1,4 +1,3 @@
-
 // Tipos principais do sistema
 export interface Cliente {
   id: string;
@@ -8,6 +7,7 @@ export interface Cliente {
   cpf: string;
   endereco: string;
   elegibilidade: 'elegivel' | 'nao_elegivel';
+  promissorias?: Promissoria[]; // Adicionando promissórias ao tipo Cliente
   created_at: string;
   updated_at: string;
 }

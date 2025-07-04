@@ -9,7 +9,7 @@ import { Search, Filter, X } from 'lucide-react';
 import { type Promissoria } from '@/types';
 
 interface FiltrosPromissoriasProps {
-  promissorias: Promissoria[];
+  promissorias: (Promissoria & { clienteNome?: string })[];
   onPromissoriasFiltradasChange: (promissoriasAtualizadas: Promissoria[]) => void;
 }
 
@@ -31,13 +31,14 @@ export function FiltrosPromissorias({ promissorias, onPromissoriasFiltradasChang
   const aplicarFiltros = () => {
     let resultado = [...promissorias];
 
-    // Filtro de busca (por valor ou observações)
+    // Filtro de busca (por valor, observações ou nome do cliente)
     if (busca.trim()) {
       const termoBusca = busca.toLowerCase().trim();
       resultado = resultado.filter(promissoria => 
         promissoria.valor.toString().includes(termoBusca) ||
         promissoria.observacoes?.toLowerCase().includes(termoBusca) ||
-        promissoria.id.toLowerCase().includes(termoBusca)
+        promissoria.id.toLowerCase().includes(termoBusca) ||
+        promissoria.clienteNome?.toLowerCase().includes(termoBusca)
       );
     }
 
@@ -111,7 +112,7 @@ export function FiltrosPromissorias({ promissorias, onPromissoriasFiltradasChang
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 id="busca"
-                placeholder="Valor, ID ou observações..."
+                placeholder="Valor, ID, cliente ou observações..."
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 className="pl-10"

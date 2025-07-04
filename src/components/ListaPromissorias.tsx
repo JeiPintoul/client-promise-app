@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,9 +8,11 @@ import { DetalhePagamentoParcela } from './DetalhePagamentoParcela';
 import { Edit, Trash2, CreditCard } from 'lucide-react';
 import { type Promissoria, type Parcela, type Cliente } from '@/types';
 
+type PromissoriaComCliente = Promissoria & { clienteNome: string };
+
 export function ListaPromissorias() {
-  const [todasPromissorias, setTodasPromissorias] = useState<(Promissoria & { clienteNome: string })[]>([]);
-  const [promissoriasFiltratas, setPromissoriasFiltratas] = useState<(Promissoria & { clienteNome: string })[]>([]);
+  const [todasPromissorias, setTodasPromissorias] = useState<PromissoriaComCliente[]>([]);
+  const [promissoriasFiltratas, setPromissoriasFiltratas] = useState<PromissoriaComCliente[]>([]);
   const [promissoriaSelecionada, setPromissoriaSelecionada] = useState<Promissoria | null>(null);
   const [parcelaSelecionada, setParcelaSelecionada] = useState<{
     parcela: Parcela;
@@ -25,7 +26,7 @@ export function ListaPromissorias() {
   const carregarPromissorias = () => {
     try {
       const clientes = JSON.parse(localStorage.getItem('clientes') || '[]') as Cliente[];
-      const promissoriasComCliente: (Promissoria & { clienteNome: string })[] = [];
+      const promissoriasComCliente: PromissoriaComCliente[] = [];
       
       clientes.forEach(cliente => {
         if (cliente.promissorias && cliente.promissorias.length > 0) {
@@ -45,6 +46,15 @@ export function ListaPromissorias() {
       setTodasPromissorias([]);
       setPromissoriasFiltratas([]);
     }
+  };
+
+  const handleFiltrosChange = (promissoriasFiltradasRecebidas: Promissoria[]) => {
+    // Converter as promissórias filtradas de volta para o tipo com clienteNome
+    const promissoriasComCliente = promissoriasFiltradasRecebidas.map(promissoria => {
+      const promissoriaExistente = todasPromissorias.find(p => p.id === promissoria.id);
+      return promissoriaExistente || { ...promissoria, clienteNome: '' };
+    });
+    setPromissoriasFiltratas(promissoriasComCliente);
   };
 
   const getStatusColor = (status: string) => {
@@ -126,7 +136,7 @@ export function ListaPromissorias() {
 
       <FiltrosPromissorias
         promissorias={todasPromissorias}
-        onPromissoriasFiltradasChange={setPromissoriasFiltratas}
+        onPromissoriasFiltradasChange={handleFiltrosChange}
       />
 
       <div className="grid gap-4">
