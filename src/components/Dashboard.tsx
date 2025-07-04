@@ -1,38 +1,47 @@
-import { useState } from 'react';
+
+import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Users, 
+  FileText, 
+  DollarSign, 
+  Settings, 
+  LogOut,
+  UserPlus,
+  Plus
+} from 'lucide-react';
 import { ClientesList } from './ClientesList';
 import { CadastroCliente } from './CadastroCliente';
+import { ListaPromissorias } from './ListaPromissorias';
+import { CadastroPromissoria } from './CadastroPromissoria';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
 import { Configuracoes } from './Configuracoes';
-import { LogOut, Users, UserPlus, CreditCard, Settings } from 'lucide-react';
 
 export function Dashboard() {
-  const { user, profile, signOut, isManager } = useAuth();
+  const { user, logout, isManager } = useAuth();
   const [activeTab, setActiveTab] = useState('clientes');
+  const [showCadastroCliente, setShowCadastroCliente] = useState(false);
+  const [showCadastroPromissoria, setShowCadastroPromissoria] = useState(false);
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+  const handleLogout = () => {
+    logout();
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="bg-card shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Sistema de Gestão</h1>
-              <p className="text-sm text-muted-foreground">
-                Bem-vindo, {profile?.nome} ({profile?.role})
-              </p>
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold">Sistema de Promissórias</h1>
+              <span className="text-sm text-muted-foreground">
+                Olá, {user?.nome} ({isManager ? 'Gerente' : 'Funcionário'})
+              </span>
             </div>
-            <Button onClick={handleSignOut} variant="outline">
+            <Button variant="outline" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               Sair
             </Button>
@@ -40,74 +49,71 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid w-full ${isManager ? 'grid-cols-4' : 'grid-cols-3'}`}>
+      <main className="container mx-auto px-4 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
             <TabsTrigger value="clientes" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Clientes
             </TabsTrigger>
-            <TabsTrigger value="cadastro" className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4" />
-              Cadastrar Cliente
+            <TabsTrigger value="promissorias" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Promissórias
             </TabsTrigger>
+            {isManager && (
+              <TabsTrigger value="usuarios" className="flex items-center gap-2">
+                <UserPlus className="w-4 h-4" />
+                Usuários
+              </TabsTrigger>
+            )}
             <TabsTrigger value="configuracoes" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
               Configurações
             </TabsTrigger>
-            {isManager && (
-              <TabsTrigger value="usuarios" className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4" />
-                Gerenciar Usuários
-              </TabsTrigger>
-            )}
           </TabsList>
 
-          <TabsContent value="clientes" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Lista de Clientes</CardTitle>
-              </CardHeader>
-              <CardContent>
+          <TabsContent value="clientes">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Clientes</h2>
+                <Button onClick={() => setShowCadastroCliente(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Novo Cliente
+                </Button>
+              </div>
+              {showCadastroCliente ? (
+                <CadastroCliente onClose={() => setShowCadastroCliente(false)} />
+              ) : (
                 <ClientesList />
-              </CardContent>
-            </Card>
+              )}
+            </div>
           </TabsContent>
 
-          <TabsContent value="cadastro" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Cadastrar Novo Cliente</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CadastroCliente />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="configuracoes" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configurações do Sistema</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Configuracoes />
-              </CardContent>
-            </Card>
+          <TabsContent value="promissorias">
+            {showCadastroPromissoria ? (
+              <CadastroPromissoria onClose={() => setShowCadastroPromissoria(false)} />
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Button onClick={() => setShowCadastroPromissoria(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nova Promissória
+                  </Button>
+                </div>
+                <ListaPromissorias />
+              </div>
+            )}
           </TabsContent>
 
           {isManager && (
-            <TabsContent value="usuarios" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gerenciar Usuários</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <GerenciarUsuarios />
-                </CardContent>
-              </Card>
+            <TabsContent value="usuarios">
+              <GerenciarUsuarios />
             </TabsContent>
           )}
+
+          <TabsContent value="configuracoes">
+            <Configuracoes />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
