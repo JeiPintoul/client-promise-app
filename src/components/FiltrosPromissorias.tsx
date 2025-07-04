@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,6 +22,11 @@ export function FiltrosPromissorias({ promissorias, onPromissoriasFiltradasChang
   const [ordemFiltro, setOrdemFiltro] = useState<OrdemFiltro>('data_limite_asc');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+
+  // Aplicar filtros automaticamente sempre que algum filtro mudar
+  useEffect(() => {
+    aplicarFiltros();
+  }, [busca, statusFiltro, ordemFiltro, dataInicio, dataFim, promissorias]);
 
   const aplicarFiltros = () => {
     let resultado = [...promissorias];
@@ -88,7 +93,6 @@ export function FiltrosPromissorias({ promissorias, onPromissoriasFiltradasChang
     setOrdemFiltro('data_limite_asc');
     setDataInicio('');
     setDataFim('');
-    onPromissoriasFiltradasChange(promissorias);
   };
 
   return (
@@ -168,13 +172,9 @@ export function FiltrosPromissorias({ promissorias, onPromissoriasFiltradasChang
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={aplicarFiltros} className="flex-1">
-            <Search className="w-4 h-4 mr-2" />
-            Aplicar Filtros
-          </Button>
-          <Button variant="outline" onClick={limparFiltros}>
+          <Button variant="outline" onClick={limparFiltros} className="flex-1">
             <X className="w-4 h-4 mr-2" />
-            Limpar
+            Limpar Filtros
           </Button>
         </div>
       </CardContent>

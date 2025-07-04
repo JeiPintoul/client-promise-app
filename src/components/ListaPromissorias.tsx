@@ -7,11 +7,11 @@ import { FiltrosPromissorias } from './FiltrosPromissorias';
 import { ParcelasPromissoria } from './ParcelasPromissoria';
 import { DetalhePagamentoParcela } from './DetalhePagamentoParcela';
 import { Edit, Trash2, CreditCard } from 'lucide-react';
-import { type Promissoria, type Parcela } from '@/types';
+import { type Promissoria, type Parcela, type Cliente } from '@/types';
 
 export function ListaPromissorias() {
-  const [promissorias, setPromissorias] = useState<Promissoria[]>([]);
-  const [promissoriasFiltratas, setPromissoriasFiltratas] = useState<Promissoria[]>([]);
+  const [todasPromissorias, setTodasPromissorias] = useState<(Promissoria & { clienteNome: string })[]>([]);
+  const [promissoriasFiltratas, setPromissoriasFiltratas] = useState<(Promissoria & { clienteNome: string })[]>([]);
   const [promissoriaSelecionada, setPromissoriaSelecionada] = useState<Promissoria | null>(null);
   const [parcelaSelecionada, setParcelaSelecionada] = useState<{
     parcela: Parcela;
@@ -24,12 +24,25 @@ export function ListaPromissorias() {
 
   const carregarPromissorias = () => {
     try {
-      const dados = JSON.parse(localStorage.getItem('promissorias') || '[]');
-      setPromissorias(dados);
-      setPromissoriasFiltratas(dados);
+      const clientes = JSON.parse(localStorage.getItem('clientes') || '[]') as Cliente[];
+      const promissoriasComCliente: (Promissoria & { clienteNome: string })[] = [];
+      
+      clientes.forEach(cliente => {
+        if (cliente.promissorias && cliente.promissorias.length > 0) {
+          cliente.promissorias.forEach(promissoria => {
+            promissoriasComCliente.push({
+              ...promissoria,
+              clienteNome: cliente.nome
+            });
+          });
+        }
+      });
+
+      setTodasPromissorias(promissoriasComCliente);
+      setPromissoriasFiltratas(promissoriasComCliente);
     } catch (error) {
       console.error('Erro ao carregar promissórias:', error);
-      setPromissorias([]);
+      setTodasPromissorias([]);
       setPromissoriasFiltratas([]);
     }
   };
@@ -112,14 +125,14 @@ export function ListaPromissorias() {
       </div>
 
       <FiltrosPromissorias
-        promissorias={promissorias}
+        promissorias={todasPromissorias}
         onPromissoriasFiltradasChange={setPromissoriasFiltratas}
       />
 
       <div className="grid gap-4">
         {promissoriasFiltratas.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            {promissorias.length === 0
+            {todasPromissorias.length === 0
               ? 'Nenhuma promissória cadastrada.'
               : 'Nenhuma promissória encontrada com os filtros aplicados.'}
           </div>
@@ -137,13 +150,14 @@ export function ListaPromissorias() {
                       <Badge variant={getBadgeVariant(promissoria.status)}>
                         {getStatusText(promissoria.status)}
                       </Badge>
+                      <span className="text-sm text-muted-foreground">({promissoria.clienteNome})</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600">
                       <div>
                         <strong>Emissão:</strong> {new Date(promissoria.dataEmissao).toLocaleDateString('pt-BR')}
                       </div>
                       <div>
-                        <strong>Limite:</strong> {new Date(promissoria.dataLimite).toLocaleDateString('pt-BR')}
+                        <strong>Vencimento:</strong> {new Date(promissoria.dataLimite).toLocaleDateString('pt-BR')}
                       </div>
                       <div>
                         <strong>Valor Pago:</strong> R$ {(promissoria.valorPago || 0).toFixed(2)}

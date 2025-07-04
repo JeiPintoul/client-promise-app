@@ -1,13 +1,14 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowLeft, Plus, Edit, Trash2, CreditCard, Save, X, History } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, CreditCard, Save, X, History, Search, Filter } from 'lucide-react';
 import { ListaParcelas } from './ListaParcelas';
 import { EditarPromissoria } from './EditarPromissoria';
 import { CadastroPromissoria } from './CadastroPromissoria';
@@ -18,6 +19,8 @@ import { type Cliente, type Promissoria } from '@/types';
 import { calcularEstatisticasCliente, calcularStatusPromissoria, formatarStatus } from '@/utils/paymentUtils';
 
 type ViewState = 'detail' | 'editar-promissoria' | 'registrar-pagamento' | 'historico-pagamentos' | 'detalhe-pagamento-parcela';
+type StatusFiltro = 'todos' | 'pendente' | 'atrasado' | 'pago';
+type OrdemFiltro = 'data_emissao_desc' | 'data_emissao_asc' | 'valor_desc' | 'valor_asc' | 'data_limite_asc';
 
 interface ClienteDetailProps {
   cliente: Cliente;
@@ -31,6 +34,7 @@ interface ClienteDetailProps {
  */
 export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps) {
   const [promissorias, setPromissorias] = useState<Promissoria[]>([]);
+  const [promissoriasFiltratas, setPromissoriasFiltratas] = useState<Promissoria[]>([]);
   const [selectedPromissoria, setSelectedPromissoria] = useState<Promissoria | null>(null);
   const [selectedParcela, setSelectedParcela] = useState<any>(null);
   const [viewState, setViewState] = useState<ViewState>('detail');
@@ -44,6 +48,13 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
     parcelaId: '',
     valorSugerido: 0
   });
+
+  // Estados dos filtros
+  const [busca, setBusca] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>('todos');
+  const [ordemFiltro, setOrdemFiltro] = useState<OrdemFiltro>('data_limite_asc');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
   
   const { isManager } = useAuth();
   const { toast } = useToast();
@@ -51,6 +62,78 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
   useEffect(() => {
     fetchPromissorias();
   }, []);
+
+  // Aplicar filtros automaticamente sempre que algum filtro mudar
+  useEffect(() => {
+    aplicarFiltros();
+  }, [busca, statusFiltro, ordemFiltro, dataInicio, dataFim, promissorias]);
+
+  const aplicarFiltros = () => {
+    let resultado = [...promissorias];
+
+    // Filtro de busca (por valor ou observações)
+    if (busca.trim()) {
+      const termoBusca = busca.toLowerCase().trim();
+      resultado = resultado.filter(promissoria => 
+        promissoria.valor.toString().includes(termoBusca) ||
+        promissoria.observacoes?.toLowerCase().includes(termoBusca) ||
+        promissoria.id.toLowerCase().includes(termoBusca)
+      );
+    }
+
+    // Filtro por status
+    if (statusFiltro !== 'todos') {
+      resultado = resultado.filter(promissoria => promissoria.status === statusFiltro);
+    }
+
+    // Filtro por data
+    if (dataInicio) {
+      resultado = resultado.filter(promissoria => 
+        new Date(promissoria.dataEmissao) >= new Date(dataInicio)
+      );
+    }
+    if (dataFim) {
+      resultado = resultado.filter(promissoria => 
+        new Date(promissoria.dataEmissao) <= new Date(dataFim)
+      );
+    }
+
+    // Ordenação
+    resultado.sort((a, b) => {
+      switch (ordemFiltro) {
+        case 'data_emissao_desc':
+          return new Date(b.dataEmissao).getTime() - new Date(a.dataEmissao).getTime();
+        case 'data_emissao_asc':
+          return new Date(a.dataEmissao).getTime() - new Date(b.dataEmissao).getTime();
+        case 'valor_desc':
+          return b.valor - a.valor;
+        case 'valor_asc':
+          return a.valor - b.valor;
+        case 'data_limite_asc':
+          return new Date(a.dataLimite).getTime() - new Date(b.dataLimite).getTime();
+        default:
+          return 0;
+      }
+    });
+
+    // Priorizar atrasadas primeiro quando status é 'todos'
+    if (statusFiltro === 'todos') {
+      const atrasadas = resultado.filter(p => p.status === 'atrasado');
+      const pendentes = resultado.filter(p => p.status === 'pendente');
+      const pagas = resultado.filter(p => p.status === 'pago');
+      resultado = [...atrasadas, ...pendentes, ...pagas];
+    }
+
+    setPromissoriasFiltratas(resultado);
+  };
+
+  const limparFiltros = () => {
+    setBusca('');
+    setStatusFiltro('todos');
+    setOrdemFiltro('data_limite_asc');
+    setDataInicio('');
+    setDataFim('');
+  };
 
   const fetchPromissorias = () => {
     try {
@@ -474,7 +557,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
         </CardContent>
       </Card>
 
-      {/* Lista de Promissórias */}
+      {/* Lista de Promissórias com Filtros */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -486,6 +569,91 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
           </div>
         </CardHeader>
         <CardContent>
+          {/* Filtros */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Filter className="w-4 h-4" />
+                Filtros
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="busca-cliente">Buscar</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="busca-cliente"
+                      placeholder="Valor, ID ou observações..."
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="status-cliente">Status</Label>
+                  <Select value={statusFiltro} onValueChange={(value: StatusFiltro) => setStatusFiltro(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="atrasado">Atrasadas</SelectItem>
+                      <SelectItem value="pendente">Pendentes</SelectItem>
+                      <SelectItem value="pago">Pagas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ordem-cliente">Ordenar por</Label>
+                  <Select value={ordemFiltro} onValueChange={(value: OrdemFiltro) => setOrdemFiltro(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="data_limite_asc">Vencimento (mais próximo)</SelectItem>
+                      <SelectItem value="data_emissao_desc">Data de emissão (mais recente)</SelectItem>
+                      <SelectItem value="data_emissao_asc">Data de emissão (mais antiga)</SelectItem>
+                      <SelectItem value="valor_desc">Valor (maior)</SelectItem>
+                      <SelectItem value="valor_asc">Valor (menor)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="dataInicio-cliente">Data início</Label>
+                  <Input
+                    id="dataInicio-cliente"
+                    type="date"
+                    value={dataInicio}
+                    onChange={(e) => setDataInicio(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="dataFim-cliente">Data fim</Label>
+                  <Input
+                    id="dataFim-cliente"
+                    type="date"
+                    value={dataFim}
+                    onChange={(e) => setDataFim(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={limparFiltros} className="flex-1">
+                  <X className="w-4 h-4 mr-2" />
+                  Limpar Filtros
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {showForm && (
             <CadastroPromissoria
               clienteId={cliente.id}
@@ -498,12 +666,14 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
           )}
 
           <div className="space-y-6">
-            {promissorias.length === 0 ? (
+            {promissoriasFiltratas.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                Nenhuma promissória encontrada para este cliente.
+                {promissorias.length === 0
+                  ? 'Nenhuma promissória encontrada para este cliente.'
+                  : 'Nenhuma promissória encontrada com os filtros aplicados.'}
               </p>
             ) : (
-              promissorias.map((promissoria) => (
+              promissoriasFiltratas.map((promissoria) => (
                 <div key={promissoria.id} className="border rounded-lg p-4 space-y-4">
                   {/* Cabeçalho da Promissória */}
                   <div className="flex items-center justify-between">
@@ -522,7 +692,7 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
                           <strong>Emissão:</strong> {new Date(promissoria.dataEmissao).toLocaleDateString('pt-BR')}
                         </div>
                         <div>
-                          <strong>Limite:</strong> {new Date(promissoria.dataLimite).toLocaleDateString('pt-BR')}
+                          <strong>Vencimento:</strong> {new Date(promissoria.dataLimite).toLocaleDateString('pt-BR')}
                         </div>
                         <div>
                           <strong>Valor Pago:</strong> <span className="text-green-600 dark:text-green-400">R$ {(promissoria.valorPago || 0).toFixed(2)}</span>
