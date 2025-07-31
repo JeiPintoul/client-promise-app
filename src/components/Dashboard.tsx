@@ -17,6 +17,9 @@ import { ClientesList } from './ClientesList';
 import { CadastroCliente } from './CadastroCliente';
 import { ListaPromissorias } from './ListaPromissorias';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
+import { GestaoUsuarios } from './GestaoUsuarios';
+import { HistoricoTransacoes } from './HistoricoTransacoes';
+import { ConfiguracoesSistema } from './ConfiguracoesSistema';
 import { Configuracoes } from './Configuracoes';
 
 export function Dashboard() {
@@ -49,7 +52,7 @@ export function Dashboard() {
 
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6">
             <TabsTrigger value="clientes" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Clientes
@@ -58,15 +61,25 @@ export function Dashboard() {
               <FileText className="w-4 h-4" />
               Promissórias
             </TabsTrigger>
+            <TabsTrigger value="transacoes" className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Transações
+            </TabsTrigger>
             {isManager && (
               <TabsTrigger value="usuarios" className="flex items-center gap-2">
                 <UserPlus className="w-4 h-4" />
                 Usuários
               </TabsTrigger>
             )}
+            {isManager && (
+              <TabsTrigger value="gestao-usuarios" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Gestão
+              </TabsTrigger>
+            )}
             <TabsTrigger value="configuracoes" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
-              Configurações
+              Config
             </TabsTrigger>
           </TabsList>
 
@@ -91,14 +104,27 @@ export function Dashboard() {
             <ListaPromissorias />
           </TabsContent>
 
+          <TabsContent value="transacoes">
+            <HistoricoTransacoes />
+          </TabsContent>
+
           {isManager && (
             <TabsContent value="usuarios">
               <GerenciarUsuarios />
             </TabsContent>
           )}
 
+          {isManager && (
+            <TabsContent value="gestao-usuarios">
+              <GestaoUsuarios />
+            </TabsContent>
+          )}
+
           <TabsContent value="configuracoes">
-            <Configuracoes />
+            <div className="space-y-6">
+              <ConfiguracoesSistema />
+              <Configuracoes />
+            </div>
           </TabsContent>
         </Tabs>
       </main>

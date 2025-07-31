@@ -13,6 +13,7 @@ import { ListaParcelas } from './ListaParcelas';
 import { EditarPromissoria } from './EditarPromissoria';
 import { CadastroPromissoria } from './CadastroPromissoria';
 import { RegistroPagamento } from './RegistroPagamento';
+import { PagamentoInteligente } from './PagamentoInteligente';
 import { HistoricoPagamentos } from './HistoricoPagamentos';
 import { DetalhePagamentoParcela } from './DetalhePagamentoParcela';
 import { type Cliente, type Promissoria } from '@/types';
@@ -499,10 +500,16 @@ export function ClienteDetail({ cliente, onBack, onUpdate }: ClienteDetailProps)
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Resumo Financeiro</CardTitle>
-            <Button onClick={() => handleRegistrarPagamento('geral')}>
-              <CreditCard className="w-4 h-4 mr-2" />
-              Registrar Pagamento
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => handleRegistrarPagamento('geral')}>
+                <CreditCard className="w-4 h-4 mr-2" />
+                Registrar Pagamento
+              </Button>
+              <PagamentoInteligente
+                cliente={cliente}
+                onPagamentoRegistrado={() => fetchPromissorias()}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
