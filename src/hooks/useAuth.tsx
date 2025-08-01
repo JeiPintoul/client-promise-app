@@ -1,10 +1,17 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { apiClient } from '@/api/apiClient';
 
 interface User {
   id: string;
   nome: string;
   role: 'gerente' | 'funcionario';
+  ativo?: boolean;
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
 }
 
 interface AuthContextType {
@@ -15,6 +22,7 @@ interface AuthContextType {
   signUpWithName: (nome: string, password: string, role?: 'gerente' | 'funcionario') => Promise<void>;
   signOut: () => Promise<void>;
   isManager: boolean;
+  isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,80 +33,123 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing logged-in user in localStorage
-    const currentUser = localStorage.getItem('current_user');
-    if (currentUser) {
-      const userData = JSON.parse(currentUser);
-      setUser(userData);
-      setProfile(userData);
-    }
-    setLoading(false);
+    const initAuth = () => {
+      try {
+        // Verificar token JWT primeiro
+        const token = localStorage.getItem('auth_token');
+        const currentUser = localStorage.getItem('current_user');
+        
+        if (token && currentUser) {
+          // Verificar se o token ainda é válido
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const isExpired = payload.exp * 1000 <= Date.now();
+          
+          if (!isExpired) {
+            const userData = JSON.parse(currentUser);
+            setUser(userData);
+            setProfile(userData);
+          } else {
+            // Token expirado, limpar dados
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('current_user');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('current_user');
+      }
+      
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   const signInWithName = async (nome: string, password: string) => {
-    // Verificar credenciais no localStorage
-    const savedUser = localStorage.getItem(`user_${nome}`);
-    
-    if (!savedUser) {
-      throw new Error('Usuário não encontrado');
+    try {
+      // Tentar login via API primeiro
+      const response = await apiClient.post<LoginResponse>('/auth/login', { nome, password });
+      
+      // Salvar token JWT e dados do usuário
+      localStorage.setItem('auth_token', response.token);
+      localStorage.setItem('current_user', JSON.stringify(response.user));
+      
+      setUser(response.user);
+      setProfile(response.user);
+    } catch (error: any) {
+      // Fallback para localStorage (modo offline)
+      const savedUser = localStorage.getItem(`user_${nome}`);
+      
+      if (!savedUser) {
+        throw new Error('Usuário não encontrado');
+      }
+      
+      const userData = JSON.parse(savedUser);
+      
+      if (userData.password === '' && password === '') {
+        // Login sem senha permitido para funcionários
+      } else if (userData.password !== password) {
+        throw new Error('Senha incorreta');
+      }
+      
+      const userSession = {
+        id: userData.id,
+        nome: userData.nome,
+        role: userData.role
+      };
+      
+      setUser(userSession);
+      setProfile(userSession);
+      localStorage.setItem('current_user', JSON.stringify(userSession));
     }
-    
-    const userData = JSON.parse(savedUser);
-    
-    // Se o usuário não tem senha (funcionários sem senha), permitir login sem senha
-    if (userData.password === '' && password === '') {
-      // Login sem senha permitido para funcionários
-    } else if (userData.password !== password) {
-      throw new Error('Senha incorreta');
-    }
-    
-    // Login bem-sucedido
-    const userSession = {
-      id: userData.id,
-      nome: userData.nome,
-      role: userData.role
-    };
-    
-    setUser(userSession);
-    setProfile(userSession);
-    localStorage.setItem('current_user', JSON.stringify(userSession));
   };
 
   const signUpWithName = async (nome: string, password: string, role: 'gerente' | 'funcionario' = 'funcionario') => {
-    // Verificar se já existe um usuário com esse nome
-    const existingUser = localStorage.getItem(`user_${nome}`);
-    if (existingUser) {
-      throw new Error('Já existe um usuário com esse nome');
+    try {
+      // Tentar criar via API primeiro
+      await apiClient.post('/auth/register', { nome, password, role });
+    } catch (error: any) {
+      // Fallback para localStorage (modo offline)
+      const existingUser = localStorage.getItem(`user_${nome}`);
+      if (existingUser) {
+        throw new Error('Já existe um usuário com esse nome');
+      }
+
+      const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
+      const finalRole = allUsers.length === 0 ? 'gerente' : role;
+
+      const userId = crypto.randomUUID();
+      const newUser = {
+        id: userId,
+        nome,
+        password: password || '',
+        role: finalRole
+      };
+
+      localStorage.setItem(`user_${nome}`, JSON.stringify(newUser));
+      allUsers.push({ id: userId, nome, role: finalRole });
+      localStorage.setItem('all_users', JSON.stringify(allUsers));
     }
-
-    // Se for o primeiro usuário, torná-lo gerente automaticamente
-    const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
-    const finalRole = allUsers.length === 0 ? 'gerente' : role;
-
-    // Criar usuário localmente
-    const userId = crypto.randomUUID();
-    const newUser = {
-      id: userId,
-      nome,
-      password: password || '', // Permitir senha vazia para funcionários
-      role: finalRole
-    };
-
-    // Salvar no localStorage
-    localStorage.setItem(`user_${nome}`, JSON.stringify(newUser));
-    
-    // Também salvar na lista de usuários para o dropdown
-    allUsers.push({ id: userId, nome, role: finalRole });
-    localStorage.setItem('all_users', JSON.stringify(allUsers));
   };
 
   const signOut = async () => {
-    setUser(null);
-    setProfile(null);
-    localStorage.removeItem('current_user');
+    try {
+      // Tentar logout via API
+      await apiClient.post('/auth/logout');
+    } catch (error) {
+      // Ignorar erros de logout da API
+    } finally {
+      // Sempre limpar dados locais
+      setUser(null);
+      setProfile(null);
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('current_user');
+    }
   };
 
   const isManager = profile?.role === 'gerente';
+  const isAuthenticated = !!user;
 
   return (
     <AuthContext.Provider value={{
@@ -108,7 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithName,
       signUpWithName,
       signOut,
-      isManager
+      isManager,
+      isAuthenticated
     }}>
       {children}
     </AuthContext.Provider>
