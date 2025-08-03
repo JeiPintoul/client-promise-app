@@ -11,8 +11,13 @@ export interface Usuario {
 
 export interface UsuarioRequest {
   nome: string;
-  password: string;
+  senha: string;
   role: 'gerente' | 'funcionario';
+}
+
+export interface AlterarSenhaRequest {
+  senhaAtual: string;
+  novaSenha: string;
 }
 
 export interface UsuarioFilters extends FilterParams {
@@ -49,5 +54,9 @@ export const usuarioService = {
 
   async resetarSenha(id: string, novaSenha: string): Promise<void> {
     return apiClient.post<void>(`/usuarios/${id}/resetar-senha`, { novaSenha });
+  },
+
+  async alterarSenha(dados: AlterarSenhaRequest): Promise<void> {
+    return apiClient.post<void>('/usuarios/alterar-senha', dados);
   }
 };

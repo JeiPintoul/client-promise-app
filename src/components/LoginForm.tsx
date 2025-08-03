@@ -18,8 +18,8 @@ export function LoginForm() {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     nome: '',
-    password: '',
-    confirmPassword: ''
+    senha: '',
+    confirmSenha: ''
   });
   const [loading, setLoading] = useState(false);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -54,13 +54,13 @@ export function LoginForm() {
 
     try {
       if (isLogin) {
-        await signInWithName(formData.nome, formData.password);
+        await signInWithName(formData.nome, formData.senha);
         toast({
           title: "Sucesso",
           description: "Login realizado com sucesso!",
         });
       } else {
-        if (formData.password !== formData.confirmPassword) {
+        if (formData.senha !== formData.confirmSenha) {
           toast({
             title: "Erro",
             description: "As senhas não coincidem.",
@@ -70,7 +70,7 @@ export function LoginForm() {
           return;
         }
         
-        await signUpWithName(formData.nome, formData.password);
+        await signUpWithName(formData.nome, formData.senha);
         toast({
           title: "Sucesso",
           description: "Usuário cadastrado com sucesso!",
@@ -151,8 +151,8 @@ export function LoginForm() {
               <Input
                 id="password"
                 type="password"
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                value={formData.senha}
+                onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
                 required={!isLogin || formData.nome === '' || !usuarios.find(u => u.nome === formData.nome && u.role === 'funcionario')}
               />
             </div>
@@ -163,8 +163,8 @@ export function LoginForm() {
                 <Input
                   id="confirmPassword"
                   type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  value={formData.confirmSenha}
+                  onChange={(e) => setFormData(prev => ({ ...prev, confirmSenha: e.target.value }))}
                   required
                 />
               </div>

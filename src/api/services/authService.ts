@@ -2,7 +2,7 @@ import { apiClient } from '../apiClient';
 
 export interface LoginRequest {
   nome: string;
-  password: string;
+  senha: string;
 }
 
 export interface LoginResponse {
@@ -17,7 +17,7 @@ export interface LoginResponse {
 
 export interface CreateUserRequest {
   nome: string;
-  password: string;
+  senha: string;
   role: 'gerente' | 'funcionario';
 }
 
@@ -27,7 +27,7 @@ export const authService = {
   },
 
   async createUser(userData: CreateUserRequest): Promise<void> {
-    return apiClient.post<void>('/auth/register', userData);
+    return apiClient.post<void>('/usuarios', userData);
   },
 
   async refreshToken(): Promise<LoginResponse> {
