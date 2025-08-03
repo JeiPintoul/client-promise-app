@@ -66,6 +66,7 @@ export function LoginForm() {
             description: "As senhas não coincidem.",
             variant: "destructive",
           });
+          setLoading(false);
           return;
         }
         
@@ -78,7 +79,7 @@ export function LoginForm() {
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: error.message || "Erro inesperado",
         variant: "destructive",
       });
     } finally {

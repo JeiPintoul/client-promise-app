@@ -16,6 +16,8 @@ interface LocalUser {
   id: string;
   nome: string;
   role: 'gerente' | 'funcionario';
+  ativo: boolean;
+  created_at: string;
 }
 
 export function GerenciarUsuarios() {
@@ -39,7 +41,12 @@ export function GerenciarUsuarios() {
   const fetchProfiles = () => {
     try {
       const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]');
-      setProfiles(allUsers);
+      const usersWithDefaults = allUsers.map((user: any) => ({
+        ...user,
+        ativo: user.ativo !== false,
+        created_at: user.created_at || new Date().toISOString()
+      }));
+      setProfiles(usersWithDefaults);
     } catch (error: any) {
       toast({
         title: "Erro",

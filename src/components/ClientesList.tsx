@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,75 +8,26 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useClientes } from '@/hooks/useClientes';
 import { Search, Eye, Trash2 } from 'lucide-react';
 import { ClienteDetail } from './ClienteDetail';
-
-type Cliente = {
-  id: string;
-  nome: string;
-  apelido?: string | null;
-  telefone: string;
-  cpf: string;
-  endereco: string;
-  elegibilidade: 'elegivel' | 'nao_elegivel';
-  created_at: string;
-  updated_at: string;
-};
+import { Cliente } from '@/types';
 
 export function ClientesList() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
-  const [loading, setLoading] = useState(true);
   const { isManager } = useAuth();
   const { toast } = useToast();
-
-  useEffect(() => {
-    fetchClientes();
-  }, []);
-
-  useEffect(() => {
-    filterClientes();
-  }, [clientes, searchTerm, statusFilter]);
-
-  const fetchClientes = () => {
-    try {
-      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
-      setClientes(clientesData);
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar clientes: " + error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+  
+  const filters = {
+    nome: searchTerm,
+    elegibilidade: statusFilter !== 'todos' ? statusFilter as any : undefined
   };
+  
+  const { data: clientes, loading, error, deleteCliente, toggleElegibilidade, refetch } = useClientes(filters);
 
-  const filterClientes = () => {
-    let filtered = clientes;
-
-    if (statusFilter !== 'todos') {
-      filtered = filtered.filter(cliente => cliente.elegibilidade === statusFilter);
-    }
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(cliente =>
-        cliente.nome.toLowerCase().includes(term) ||
-        cliente.apelido?.toLowerCase().includes(term) ||
-        cliente.telefone.includes(term) ||
-        cliente.cpf.includes(term)
-      );
-    }
-
-    setFilteredClientes(filtered);
-  };
-
-  const toggleElegibilidade = (cliente: Cliente) => {
+  const handleToggleElegibilidade = async (cliente: Cliente) => {
     if (!isManager) {
       toast({
         title: "Acesso Negado",
@@ -87,18 +38,7 @@ export function ClientesList() {
     }
 
     try {
-      const novaElegibilidade = cliente.elegibilidade === 'elegivel' ? 'nao_elegivel' : 'elegivel';
-      
-      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
-      const clientesAtualizados = clientesData.map((c: Cliente) =>
-        c.id === cliente.id
-          ? { ...c, elegibilidade: novaElegibilidade, updated_at: new Date().toISOString() }
-          : c
-      );
-      
-      localStorage.setItem('clientes', JSON.stringify(clientesAtualizados));
-      setClientes(clientesAtualizados);
-
+      await toggleElegibilidade(cliente.id);
       toast({
         title: "Sucesso",
         description: "Elegibilidade atualizada com sucesso!",
@@ -112,7 +52,7 @@ export function ClientesList() {
     }
   };
 
-  const excluirCliente = (cliente: Cliente) => {
+  const handleExcluirCliente = async (cliente: Cliente) => {
     if (!isManager) {
       toast({
         title: "Acesso Negado",
@@ -123,26 +63,7 @@ export function ClientesList() {
     }
 
     try {
-      // Verificar se o cliente possui promissórias
-      const promissorias = JSON.parse(localStorage.getItem('promissorias') || '[]');
-      const promissoriasCliente = promissorias.filter((p: any) => p.clienteId === cliente.id);
-      
-      if (promissoriasCliente.length > 0) {
-        toast({
-          title: "Erro",
-          description: "Não é possível excluir um cliente que possui promissórias cadastradas. Exclua primeiro as promissórias.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Remover cliente
-      const clientesData = JSON.parse(localStorage.getItem('clientes') || '[]');
-      const clientesAtualizados = clientesData.filter((c: Cliente) => c.id !== cliente.id);
-      
-      localStorage.setItem('clientes', JSON.stringify(clientesAtualizados));
-      setClientes(clientesAtualizados);
-
+      await deleteCliente(cliente.id);
       toast({
         title: "Sucesso",
         description: "Cliente excluído com sucesso!",
@@ -172,7 +93,7 @@ export function ClientesList() {
       <ClienteDetail
         cliente={selectedCliente}
         onBack={() => setSelectedCliente(null)}
-        onUpdate={fetchClientes}
+        onUpdate={refetch}
       />
     );
   }
@@ -210,14 +131,14 @@ export function ClientesList() {
 
       {/* Lista de clientes */}
       <div className="grid gap-4">
-        {filteredClientes.length === 0 ? (
+        {!clientes || (Array.isArray(clientes) ? clientes.length === 0 : true) ? (
           <div className="text-center py-8 text-gray-500">
             {searchTerm || statusFilter !== 'todos'
               ? 'Nenhum cliente encontrado com os filtros aplicados.'
               : 'Nenhum cliente cadastrado.'}
           </div>
         ) : (
-          filteredClientes.map((cliente) => (
+          (Array.isArray(clientes) ? clientes : []).map((cliente) => (
             <Card key={cliente.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -260,7 +181,7 @@ export function ClientesList() {
                         <Button
                           variant={cliente.elegibilidade === 'elegivel' ? 'destructive' : 'default'}
                           size="sm"
-                          onClick={() => toggleElegibilidade(cliente)}
+                          onClick={() => handleToggleElegibilidade(cliente)}
                         >
                           {cliente.elegibilidade === 'elegivel' ? 'Bloquear' : 'Desbloquear'}
                         </Button>
@@ -281,9 +202,9 @@ export function ClientesList() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => excluirCliente(cliente)}>
-                                Excluir
-                              </AlertDialogAction>
+                            <AlertDialogAction onClick={() => handleExcluirCliente(cliente)}>
+                              Excluir
+                            </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>

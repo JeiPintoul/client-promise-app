@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useClientes } from '@/hooks/useClientes';
 import { validarCPF, validarTelefone, formatarCPF, formatarTelefone } from '@/utils/validations';
 
 export function CadastroCliente() {
@@ -18,6 +19,7 @@ export function CadastroCliente() {
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { createCliente } = useClientes();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -103,24 +105,16 @@ export function CadastroCliente() {
     setLoading(true);
 
     try {
-      // Criar cliente localmente
-      const clienteId = crypto.randomUUID();
-      const novoCliente = {
-        id: clienteId,
+      const clienteData = {
         nome: formData.nome.trim(),
-        apelido: formData.apelido.trim() || null,
+        apelido: formData.apelido.trim() || undefined,
         telefone: formData.telefone,
         cpf: formData.cpf,
         endereco: formData.endereco.trim(),
-        elegibilidade: 'elegivel',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        elegibilidade: 'elegivel' as const
       };
 
-      // Salvar no localStorage
-      const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
-      clientes.push(novoCliente);
-      localStorage.setItem('clientes', JSON.stringify(clientes));
+      await createCliente(clienteData);
 
       toast({
         title: "Sucesso",
